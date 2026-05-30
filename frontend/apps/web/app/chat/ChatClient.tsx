@@ -111,7 +111,7 @@ export function ChatClient() {
         </header>
         <div className="flex-1 overflow-y-auto">
           {messages.length === 0 ? (
-            <EmptyState />
+            <EmptyState onPrompt={send} />
           ) : (
             <MessageList messages={messages} />
           )}

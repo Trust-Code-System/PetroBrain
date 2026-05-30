@@ -1,17 +1,17 @@
 :root {
   color-scheme: light;
-  --bg: #f6f7f4;
-  --ink: #18201f;
-  --muted: #66716d;
-  --line: #cdd6d1;
+  --bg: #fafaf9;
+  --ink: #1c1917;
+  --muted: #78716c;
+  --line: #e7e5e4;
   --panel: #ffffff;
-  --panel-2: #eef3ef;
-  --accent: #126a64;
-  --accent-2: #334b7a;
-  --danger: #a93b2f;
-  --warn-bg: #fff0e8;
-  --ok-bg: #e9f5ef;
-  --shadow: 0 10px 30px rgba(24, 32, 31, 0.08);
+  --panel-2: #fff7ed;
+  --accent: #ea580c;
+  --accent-2: #9a3412;
+  --danger: #b8262a;
+  --warn-bg: #fdecd0;
+  --ok-bg: #dff3e4;
+  --shadow: 0 10px 30px rgba(28, 25, 23, 0.08);
 }
 
 * {
@@ -40,20 +40,21 @@ textarea {
   gap: 24px;
   min-height: 78px;
   padding: 14px 24px;
-  background: #162321;
-  color: #fff;
-  border-bottom: 4px solid #d69e2e;
+  background: var(--panel);
+  color: var(--ink);
+  border-bottom: 4px solid var(--accent);
 }
 
 .topbar h1 {
   margin: 0;
   font-size: 28px;
   letter-spacing: 0;
+  color: var(--accent);
 }
 
 .topbar p {
   margin: 2px 0 0;
-  color: #c6d0cc;
+  color: var(--muted);
 }
 
 .auth-strip {
@@ -64,39 +65,39 @@ textarea {
 }
 
 .auth-strip label {
-  color: #d9e1de;
+  color: var(--muted);
   font-size: 13px;
   font-weight: 700;
 }
 
 .auth-strip input {
   min-height: 38px;
-  border: 1px solid #4d615d;
+  border: 1px solid var(--line);
   border-radius: 6px;
   padding: 8px 10px;
-  background: #0f1917;
-  color: #fff;
+  background: #fff;
+  color: var(--ink);
 }
 
 .status {
   min-width: 110px;
-  border: 1px solid #6e817d;
+  border: 1px solid var(--line);
   border-radius: 999px;
   padding: 7px 10px;
-  color: #d9e1de;
+  color: var(--muted);
   text-align: center;
   font-size: 12px;
   font-weight: 700;
 }
 
 .status.ok {
-  border-color: #78c28d;
-  color: #d6f5df;
+  border-color: #1f8a4c;
+  color: #0e5132;
 }
 
 .status.fail {
-  border-color: #e18b7b;
-  color: #ffe0da;
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .workspace {
@@ -228,7 +229,7 @@ input:focus,
 select:focus,
 textarea:focus,
 button:focus {
-  outline: 3px solid rgba(18, 106, 100, 0.22);
+  outline: 3px solid rgba(234, 88, 12, 0.28);
   outline-offset: 1px;
 }
 

@@ -10,22 +10,23 @@
  *   warn   – caution; user must verify (e.g. Tier-2 source on an inventory).
  *   danger – decision-support refusal, validation error, live-event banner.
  *
- * Primary is a desaturated industrial blue — readable in sunlight, not
- * playful. The neutral scale is engineered for office (light) and field
- * (dark, high-contrast) themes alike.
+ * Primary is a professional orange — warm and confident on white, readable in
+ * sunlight. Text-weight shades (600/700+) clear AA contrast on white. The
+ * neutral scale is engineered for office (light) and field (dark,
+ * high-contrast) themes alike.
  */
 export const colors = {
   primary: {
-    50: '#f0f5fa',
-    100: '#dde8f3',
-    200: '#b7cde4',
-    300: '#85a9cd',
-    400: '#5085b3',
-    500: '#1f5f96',
-    600: '#194e7c',
-    700: '#143e63',
-    800: '#0f2f4b',
-    900: '#0a2034',
+    50: '#fff7ed',
+    100: '#ffedd5',
+    200: '#fed7aa',
+    300: '#fdba74',
+    400: '#fb923c',
+    500: '#f97316',
+    600: '#ea580c',
+    700: '#c2410c',
+    800: '#9a3412',
+    900: '#7c2d12',
   },
   neutral: {
     0: '#ffffff',

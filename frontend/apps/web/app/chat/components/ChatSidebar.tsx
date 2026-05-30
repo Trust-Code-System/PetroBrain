@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 
 import type { Module } from '@petrobrain/types';
@@ -12,6 +13,12 @@ const MODULE_OPTIONS: { value: Module; label: string }[] = [
   { value: 'general', label: 'General' },
   { value: 'well_control', label: 'Well Control' },
   { value: 'emissions_mrv', label: 'Emissions / MRV' },
+];
+
+const NAV: { href: '/chat' | '/emissions' | '/admin/documents'; label: string }[] = [
+  { href: '/chat', label: 'Chat' },
+  { href: '/emissions', label: 'Emissions MRV' },
+  { href: '/admin/documents', label: 'Documents' },
 ];
 
 export function ChatSidebar() {
@@ -40,11 +47,26 @@ export function ChatSidebar() {
   ];
 
   return (
-    <aside className="flex h-screen flex-col gap-4 border-r border-neutral-200 bg-neutral-50 p-4">
-      <header className="space-y-1">
-        <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">PetroBrain</p>
-        <h2 className="text-base font-semibold text-neutral-800">Workspace</h2>
+    <aside className="flex h-screen flex-col gap-4 border-r border-neutral-200 bg-white p-4">
+      <header className="flex items-center gap-2">
+        <span
+          aria-hidden
+          className="h-7 w-7 rounded-lg bg-gradient-to-br from-primary-400 to-primary-700"
+        />
+        <span className="text-base font-semibold text-neutral-800">PetroBrain</span>
       </header>
+
+      <nav className="space-y-1">
+        {NAV.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className="block rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 transition hover:bg-primary-50 hover:text-primary-700"
+          >
+            {item.label}
+          </Link>
+        ))}
+      </nav>
 
       {principal ? (
         <section className="space-y-1 text-sm">
