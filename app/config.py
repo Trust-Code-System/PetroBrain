@@ -1,7 +1,20 @@
 """Centralized configuration. Values come from environment / .env."""
 from __future__ import annotations
 
+import sys
 from functools import lru_cache
+
+# Dev convenience: load a local .env into the process environment so vars the
+# app reads via os.getenv (ANTHROPIC_API_KEY / OPENAI_API_KEY) are picked up
+# without `uvicorn --env-file`. Skipped under pytest so the test suite stays
+# hermetic, and never overrides values already set in the real environment.
+if "pytest" not in sys.modules:
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(override=False)
+    except ImportError:  # python-dotenv optional; --env-file still works without it
+        pass
 
 try:
     from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,7 +28,10 @@ except ImportError:  # fallback so the module imports without the dep installed
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="PB_")
+    # extra="ignore": .env legitimately holds non-PB_ keys (ANTHROPIC_API_KEY,
+    # OPENAI_API_KEY) that the LLM/embeddings SDKs read via os.getenv, not via
+    # Settings. Ignore them here instead of erroring on extra inputs.
+    model_config = SettingsConfigDict(env_file=".env", env_prefix="PB_", extra="ignore")
 
     app_name: str = "PetroBrain"
     environment: str = "dev"
