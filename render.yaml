@@ -39,6 +39,13 @@ services:
       - key: PB_DATABASE_URL
         sync: false
 
+      # --- Audit log path: Render free-tier filesystem is read-only outside
+      #     /tmp, so the default "logs/audit.jsonl" path fails with permission
+      #     denied AFTER the user record is already committed (causing 500
+      #     responses but real Postgres rows). /tmp is always writable. ---
+      - key: PB_AUDIT_LOG_PATH
+        value: /tmp/audit.jsonl
+
       # --- App identity ---
       - key: PB_ENVIRONMENT
         value: prod
