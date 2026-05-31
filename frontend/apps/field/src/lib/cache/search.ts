@@ -1,7 +1,7 @@
 /**
  * Offline search over the local SOP cache (pure TS).
  *
- * Phase-1 ranking is intentionally simple — substring matches scored
+ * Phase-1 ranking is intentionally simple - substring matches scored
  * higher when they land in the title or a clause heading than when they
  * land mid-body. Real ranking lands when the backend tenant-snapshot
  * endpoint ships chunks with pre-computed BM25 scores; until then this

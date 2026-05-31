@@ -19,7 +19,7 @@ export interface ChipsInputProps {
 }
 
 /**
- * Multi-select chip input — used for hazards, controls, isolations, PPE.
+ * Multi-select chip input - used for hazards, controls, isolations, PPE.
  *
  * Suggestions render as tap-to-add ghost chips below the input so the
  * user can populate the field one tap at a time in gloves. Selected

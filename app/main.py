@@ -16,6 +16,7 @@ from app.api import (
     routes_admin_tenants,
     routes_admin_users,
     routes_assets,
+    routes_auth,
     routes_calc,
     routes_chat,
     routes_documents,
@@ -31,7 +32,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 # Allow the browser-based web/admin apps (served from a different port) to call
 # this API. Added BEFORE observability instrumentation, which builds/wraps the
-# middleware stack — middleware added after instrument_app is ignored. Auth is
+# middleware stack - middleware added after instrument_app is ignored. Auth is
 # via the Authorization header (no cookies), so credentials stay off; lock the
 # origin allowlist down in production via PB_CORS_ALLOW_ORIGINS.
 app.add_middleware(
@@ -44,6 +45,7 @@ app.add_middleware(
 
 setup_observability(app, settings)
 
+app.include_router(routes_auth.router)
 app.include_router(routes_chat.router)
 app.include_router(routes_wellcontrol.router)
 app.include_router(routes_emissions.router)

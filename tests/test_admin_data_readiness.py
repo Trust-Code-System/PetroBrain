@@ -1,4 +1,4 @@
-"""B8 backend tests — GET /admin/data-readiness derived score."""
+"""B8 backend tests - GET /admin/data-readiness derived score."""
 import os
 import sys
 

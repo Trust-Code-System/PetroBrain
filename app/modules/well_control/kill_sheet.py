@@ -1,5 +1,5 @@
 """
-Well Control — Kill Sheet (worked specialist module).
+Well Control - Kill Sheet (worked specialist module).
 
 This is the fully built-out example of a PetroBrain specialist module. It composes
 the deterministic calc primitives into a complete IWCF/IADC-style kill sheet for the

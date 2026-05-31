@@ -1,11 +1,11 @@
-# PetroBrain — Sovereign Cloud Infrastructure (C2)
+# PetroBrain - Sovereign Cloud Infrastructure (C2)
 
 Terraform for the Tier-A hosted deployment. Default region **af-south-1 (Cape
 Town)** to keep data in-region. Two environments, `dev` and `prod`, compose the
 same modules with different sizing/HA toggles.
 
 > Offline-validated only in this repo (`terraform fmt` + `validate`). No
-> `plan`/`apply` has run against AWS — review a real `terraform plan` before
+> `plan`/`apply` has run against AWS - review a real `terraform plan` before
 > applying. See [RUNBOOK.md](RUNBOOK.md) for the deploy/rollback/restore steps.
 
 ## Layout
@@ -14,7 +14,7 @@ same modules with different sizing/HA toggles.
 infra/
   modules/
     network/        VPC, public+private subnets, NAT, edge/app/data security groups
-    secrets/        Secrets Manager containers (jwt, anthropic, openai) — values set out-of-band
+    secrets/        Secrets Manager containers (jwt, anthropic, openai) - values set out-of-band
     data/           RDS Postgres (pgvector), ElastiCache Redis, S3 docs bucket, DATABASE_URL secret
     observability/  CloudWatch log groups + ADOT/OTLP collector config (SSM)
     edge/           Application Load Balancer + WAFv2 web ACL
@@ -57,7 +57,7 @@ cd infra/envs/dev          # or prod
 terraform init -backend-config=backend.hcl
 terraform plan  -var-file=terraform.tfvars
 terraform apply -var-file=terraform.tfvars
-# then populate the app secrets and run DB migrations — see RUNBOOK.md
+# then populate the app secrets and run DB migrations - see RUNBOOK.md
 ```
 
 Edit `terraform.tfvars` first: set `image`, a globally-unique `bucket_name`,

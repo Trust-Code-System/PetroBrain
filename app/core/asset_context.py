@@ -2,10 +2,10 @@
 Asset-context service (A9).
 
 Two responsibilities:
-- ``resolve_asset_context(tenant_id, asset_id)`` — build the human-readable
+- ``resolve_asset_context(tenant_id, asset_id)`` - build the human-readable
   Field → … → Asset path used in the system prompt's runtime_context, plus
   the structured records the orchestrator and routes can use.
-- ``resolve_retrieval_assets(tenant_id, asset_id)`` — produce the list of
+- ``resolve_retrieval_assets(tenant_id, asset_id)`` - produce the list of
   asset ids the retriever should consider. Today we include the asset and
   every ancestor on the path to the root, so a query about Compressor K-101
   also surfaces SOPs filed against its train, block, and field.

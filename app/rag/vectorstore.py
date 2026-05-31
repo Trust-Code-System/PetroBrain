@@ -61,7 +61,7 @@ class VectorStore:
         Tenant filter is mandatory and first.
 
         ``assets`` (A9): if provided, matches any chunk whose ``asset`` is in
-        the list — the orchestrator passes the asset plus all of its ancestors
+        the list - the orchestrator passes the asset plus all of its ancestors
         so a query bound to a leaf still pulls SOPs filed at the parent train
         or field. A NULL asset (tenant-wide doc) is always included.
         """

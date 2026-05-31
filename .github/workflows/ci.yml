@@ -1,7 +1,7 @@
 name: CI
 
 # C1 gate. Runs on every PR and on pushes to main (so the README badge tracks
-# the default branch). Every step below is merge-blocking — there are no
+# the default branch). Every step below is merge-blocking - there are no
 # `continue-on-error` escapes. The red-team safety eval in particular MUST exit 0.
 on:
   pull_request:

@@ -8,7 +8,7 @@ factors used in mud weight, pressure, volume, and length.
 All functions return a ``CalcResult`` so the API / field UI gets the
 same formula-inputs-steps-result shape as the drilling and production
 calcs. Conversions are NOT safety-critical (they don't change pressures
-or volumes — they just change units), so the verification banner is
+or volumes - they just change units), so the verification banner is
 not raised.
 """
 from __future__ import annotations

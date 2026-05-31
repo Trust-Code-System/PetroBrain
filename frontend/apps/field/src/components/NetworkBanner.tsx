@@ -27,7 +27,7 @@ export function NetworkBanner({ theme, textSize }: NetworkBannerProps) {
           { color: theme.bannerFg[tone], fontSize: scaleFontSize(13, textSize) },
         ]}
       >
-        {network.online ? 'Online' : 'Offline — using local cache'}
+        {network.online ? 'Online' : 'Offline - using local cache'}
       </Text>
     </View>
   );

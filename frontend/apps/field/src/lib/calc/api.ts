@@ -1,6 +1,6 @@
 /**
  * Thin wrappers around the B7 ``/calc`` endpoints. The field never does
- * the arithmetic — the backend always rounds and returns the working.
+ * the arithmetic - the backend always rounds and returns the working.
  */
 import type { CalcCatalogEntry, CalcResponse } from './types.js';
 import type { CalcRequestBody } from './request.js';

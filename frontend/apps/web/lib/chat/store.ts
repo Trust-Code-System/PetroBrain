@@ -11,13 +11,19 @@ interface ChatStoreState {
   module: Module;
   assetContext: string | null;
   apiBaseUrl: string;
+  /**
+   * False until zustand finishes hydrating from sessionStorage. Used by the
+   * top-level chat surface to suppress the "Sign in" gate flash on a reload
+   * while the persisted token is still being read.
+   */
+  hasHydrated: boolean;
   setToken: (token: string | null) => void;
   setModule: (m: Module) => void;
   setAssetContext: (asset: string | null) => void;
 }
 
 /**
- * Session state lives in sessionStorage — the token never touches localStorage
+ * Session state lives in sessionStorage - the token never touches localStorage
  * (would survive tab close) and never goes to the server (server verifies a
  * fresh Authorization header on every API call).
  */
@@ -31,6 +37,7 @@ export const useChatStore = create<ChatStoreState>()(
       apiBaseUrl: typeof window === 'undefined'
         ? 'http://localhost:8000'
         : (window as Window & { __PB_API__?: string }).__PB_API__ ?? 'http://localhost:8000',
+      hasHydrated: false,
       setToken: (token) => set({ token, principal: decodePrincipal(token) }),
       setModule: (module) => set({ module }),
       setAssetContext: (assetContext) => set({ assetContext }),
@@ -61,6 +68,7 @@ export const useChatStore = create<ChatStoreState>()(
       onRehydrateStorage: () => (state) => {
         // Re-derive the principal in case the persisted shape predates a schema bump.
         if (state?.token) state.principal = decodePrincipal(state.token);
+        if (state) state.hasHydrated = true;
       },
     },
   ),

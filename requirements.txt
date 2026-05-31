@@ -12,6 +12,7 @@ anthropic==0.104.1
 openai==2.38.0
 pytest==9.0.3
 PyJWT==2.13.0
+bcrypt==4.2.0
 sentence-transformers==5.5.1
 celery==5.5.3
 boto3==1.40.59

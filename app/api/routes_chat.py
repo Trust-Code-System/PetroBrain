@@ -38,6 +38,7 @@ async def chat(
         req.message, module=req.module, tenant_id=who.tenant_id,
         user_role=req.user_role or who.role, jurisdiction=req.jurisdiction,
         asset_context=req.asset_context, offline_mode=req.offline_mode,
+        attachments=req.attachments,
     )
     latency_seconds = perf_counter() - started
     _finalize_chat_turn(req=req, turn=turn, who=who, latency_seconds=latency_seconds)
@@ -52,6 +53,7 @@ async def _stream_chat(req: ChatRequest, who: Principal):
         req.message, module=req.module, tenant_id=who.tenant_id,
         user_role=req.user_role or who.role, jurisdiction=req.jurisdiction,
         asset_context=req.asset_context, offline_mode=req.offline_mode,
+        attachments=req.attachments,
     ):
         event = item["event"]
         data = item["data"]
@@ -125,7 +127,7 @@ def _record_audit_events(*, req: ChatRequest, turn, who: Principal) -> None:
     """
     Write production-shape audit_events rows for the turn + each tool call.
 
-    Only HASHES of the request and response payloads reach this store —
+    Only HASHES of the request and response payloads reach this store -
     raw user text and raw model output stay out, per A6 / engineering spec.
     """
     repo = _events_repository()

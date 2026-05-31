@@ -2,7 +2,7 @@
  * Bundled SOP seed for the offline cache.
  *
  * These are short, plain-language summaries used for the offline
- * "definition of done" — *I can open the app offline and ask "show me
+ * "definition of done" - *I can open the app offline and ask "show me
  * hot-work permit procedure" and get a cached answer*. They are NOT a
  * substitute for the operator's own SOPs; production deploys overwrite
  * the seed at first sync once the backend tenant-snapshot endpoint
@@ -101,6 +101,6 @@ export const SEED_CHUNKS: CachedChunk[] = [
     id: 'demo:SOP-LOTO-001#isolate',
     document_id: 'SOP-LOTO-001',
     clause: '2 Isolate',
-    text: 'Apply a lock at every energy isolation point — electrical breaker, valve, pneumatic supply — and verify zero energy by an attempted start in the local control panel.',
+    text: 'Apply a lock at every energy isolation point - electrical breaker, valve, pneumatic supply - and verify zero energy by an attempted start in the local control panel.',
   },
 ];

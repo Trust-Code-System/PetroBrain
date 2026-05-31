@@ -1,4 +1,4 @@
-"""B8 backend tests — platform_admin cross-tenant audit override."""
+"""B8 backend tests - platform_admin cross-tenant audit override."""
 import os
 import sys
 

@@ -3,7 +3,7 @@ Permit-to-Work template engine.
 
 Given structured inputs (job description, work type, hazards, controls,
 isolations, ...), emits a permit document or a toolbox-talk briefing as
-a deterministic dict. The LLM never invents the structure — the
+a deterministic dict. The LLM never invents the structure - the
 orchestrator calls this tool, then composes the natural-language
 wrapper around the returned permit blocks.
 
@@ -38,7 +38,7 @@ OUTPUT_FORMATS = ("permit", "toolbox_talk")
 # Conservative suggested controls per work type. The tool returns these
 # alongside any controls the caller already supplied; the field UI shows
 # them as suggestions for the engineer to accept or reject. They are NOT
-# a substitute for the operator's own PTW standard — production deploys
+# a substitute for the operator's own PTW standard - production deploys
 # overwrite them with the tenant's gazetted list.
 SUGGESTED_CONTROLS: dict[str, tuple[str, ...]] = {
     "hot_work": (
@@ -113,7 +113,7 @@ VERIFICATION_BANNER = (
 )
 
 TOOLBOX_TALK_BANNER = (
-    "Toolbox talk — read this aloud at the morning briefing. Confirm everyone "
+    "Toolbox talk - read this aloud at the morning briefing. Confirm everyone "
     "present has understood the hazards, controls, and stop-work authority "
     "before deployment."
 )
@@ -150,7 +150,7 @@ class PtwInputs:
 
 
 def build_ptw(inputs: PtwInputs) -> dict[str, Any]:
-    """Build a structured permit document. Pure deterministic — no LLM."""
+    """Build a structured permit document. Pure deterministic - no LLM."""
     suggested_controls = SUGGESTED_CONTROLS.get(inputs.work_type, ())
     suggested_ppe = SUGGESTED_PPE.get(inputs.work_type, ())
 
@@ -202,7 +202,7 @@ def build_ptw(inputs: PtwInputs) -> dict[str, Any]:
             "safety_critical": True,
         }
     else:
-        # Toolbox-talk: short morning briefing variant — same data, presented
+        # Toolbox-talk: short morning briefing variant - same data, presented
         # as bullet points with explicit stop-work prompt.
         result = {
             **body,

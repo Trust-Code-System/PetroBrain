@@ -1,6 +1,6 @@
 # Network: VPC with public + private subnets across AZs, NAT egress, and the
 # three security-group tiers (edge -> app -> data). Data subnets are private and
-# never routed to the internet — the OT/sovereignty posture keeps Postgres,
+# never routed to the internet - the OT/sovereignty posture keeps Postgres,
 # Redis and the workers off any public path.
 
 data "aws_availability_zones" "available" {

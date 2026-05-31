@@ -1,7 +1,7 @@
 /**
  * Display-side helpers for the data-readiness response.
  *
- * The backend computes the score itself — we never recompute. These
+ * The backend computes the score itself - we never recompute. These
  * helpers translate the numeric score into a tone for the KPI badge
  * and surface a human readable status line.
  */
@@ -17,8 +17,8 @@ export function scoreTone(pct: number): ScoreTone {
 }
 
 export function statusLine(readiness: DataReadiness): string {
-  if (readiness.readiness_pct === 0) return 'No data yet — tenant onboarding incomplete.';
-  if (readiness.readiness_pct < 50) return 'Onboarding in progress — most data still missing.';
+  if (readiness.readiness_pct === 0) return 'No data yet - tenant onboarding incomplete.';
+  if (readiness.readiness_pct < 50) return 'Onboarding in progress - most data still missing.';
   if (readiness.readiness_pct < 80) {
     return 'Most data loaded; a handful of gaps remain before pilot launch.';
   }

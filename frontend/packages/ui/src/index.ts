@@ -1,5 +1,7 @@
 export * from './tokens/index.js';
+export * from './components/BackLink.js';
 export * from './components/Button.js';
+export * from './components/Logo.js';
 export * from './components/Input.js';
 export * from './components/Select.js';
 export * from './components/Badge.js';

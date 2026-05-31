@@ -1,5 +1,13 @@
 import type { Module } from '@petrobrain/types';
 
+export interface StreamChatAttachment {
+  name: string;
+  kind: 'image' | 'text' | 'document';
+  mime_type: string;
+  /** base64 (no data-URL prefix) for images; raw UTF-8 for text. */
+  data: string | null;
+}
+
 export interface StreamChatRequest {
   message: string;
   module: Module;
@@ -7,6 +15,7 @@ export interface StreamChatRequest {
   user_role?: string | null;
   jurisdiction?: string | null;
   offline_mode?: boolean;
+  attachments?: StreamChatAttachment[];
 }
 
 export type StreamEvent =

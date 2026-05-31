@@ -2,7 +2,7 @@
  * Wire types for the field calcs panel (B7).
  *
  * Match the FastAPI shapes in app/api/routes_calc.py + app/calc/catalog.py.
- * Pure TS — importable from Vitest without RN.
+ * Pure TS - importable from Vitest without RN.
  */
 export type CalcFamily = 'drilling' | 'production' | 'conversions' | string;
 
@@ -54,7 +54,7 @@ export interface RecentCalcRow {
   created_utc: string;
 }
 
-/** Inflated form of a recent row — hydrated by the UI / list query. */
+/** Inflated form of a recent row - hydrated by the UI / list query. */
 export interface RecentCalc {
   id: string;
   calc_name: string;

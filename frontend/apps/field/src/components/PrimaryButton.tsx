@@ -73,7 +73,7 @@ function paletteFor(
 
 const styles = StyleSheet.create({
   base: {
-    minHeight: spacing[14],          // 56 px tap target — gloves-friendly
+    minHeight: spacing[14],          // 56 px tap target - gloves-friendly
     paddingHorizontal: spacing[4],
     borderRadius: 8,
     borderWidth: 1,

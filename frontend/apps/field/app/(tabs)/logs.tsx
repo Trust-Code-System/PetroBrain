@@ -14,7 +14,7 @@ import { useFieldTheme } from '../../src/lib/session/useColorMode';
 import { scaleFontSize } from '../../src/theme/index';
 
 /**
- * Logs tab — sync history + cache controls.
+ * Logs tab - sync history + cache controls.
  *
  * Sync is a stub (see lib/cache/sync.ts TODO) but the UI is honest: it
  * tells the user when the last sync happened, what's queued, and lets
@@ -123,7 +123,7 @@ export default function LogsScreen() {
               {entry.kind}
             </Text>
             <Text style={[styles.entryDetail, { color: theme.textMuted, fontSize: scaleFontSize(12, textSize) }]}>
-              {entry.detail ?? '—'}
+              {entry.detail ?? '-'}
             </Text>
             <Text style={[styles.entryTs, { color: theme.textMuted, fontSize: scaleFontSize(11, textSize) }]}>
               {entry.occurred_utc}

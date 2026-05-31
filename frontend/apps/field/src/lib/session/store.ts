@@ -33,7 +33,7 @@ interface SessionState {
  * Session state for the field app.
  *
  * The token sits in expo-secure-store (Keychain on iOS, Keystore on
- * Android) — never AsyncStorage. Preferences and the api base URL go to
+ * Android) - never AsyncStorage. Preferences and the api base URL go to
  * SecureStore too so they survive a process kill without exposing
  * anything sensitive at rest.
  *
@@ -80,7 +80,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           const parsed = JSON.parse(rawPrefs) as Preferences;
           if (parsed.language && parsed.textSize) preferences = parsed;
         } catch {
-          // Corrupt prefs blob — fall back to defaults silently.
+          // Corrupt prefs blob - fall back to defaults silently.
         }
       }
       set({
@@ -91,7 +91,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         apiBaseUrl: savedUrl ?? readDefaultApiBaseUrl(),
       });
     } catch {
-      // SecureStore unavailable (web preview, simulator quirks) — still
+      // SecureStore unavailable (web preview, simulator quirks) - still
       // flip ``hydrated`` so the UI renders.
       set({ hydrated: true });
     }

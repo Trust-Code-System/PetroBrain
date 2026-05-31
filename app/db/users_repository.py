@@ -36,6 +36,8 @@ class UserRecord:
     last_active_utc: str | None = None
     created_utc: str = ""
     updated_utc: str = ""
+    password_hash: str | None = None
+    password_set_utc: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -95,6 +97,63 @@ class LocalJsonUsersRepository:
                 return row
         return None
 
+    def get_by_email(self, *, tenant_id: str, email: str) -> dict[str, Any] | None:
+        needle = email.strip().lower()
+        for row in self._read_all():
+            if row["tenant_id"] == tenant_id and row["email"].lower() == needle:
+                return row
+        return None
+
+    def signup(self, *, tenant_id: str, email: str, role: str,
+               password_hash: str,
+               allowed_assets: list[str] | None = None,
+               id: str | None = None) -> UserRecord:
+        """Self-serve signup: creates the user already active with a password.
+
+        Distinct from :meth:`invite` (status='invited', no password). Raises
+        ``ValueError`` if a row with the same lowercased email already exists.
+        """
+        if not tenant_id or not email:
+            raise ValueError("tenant_id and email are required")
+        if role not in VALID_ROLES:
+            raise ValueError(f"unknown role: {role}")
+        needle = email.strip().lower()
+        with self._lock:
+            rows = self._read_all_locked()
+            if any(r["tenant_id"] == tenant_id and r["email"].lower() == needle for r in rows):
+                raise ValueError(
+                    f"user with email {email!r} already exists in tenant {tenant_id!r}"
+                )
+            now = _now()
+            record = UserRecord(
+                id=id or str(uuid4()),
+                tenant_id=tenant_id,
+                email=email.strip(),
+                role=role,
+                status="active",
+                allowed_assets=list(allowed_assets or []),
+                invited_at_utc=now,
+                last_active_utc=now,
+                created_utc=now,
+                updated_utc=now,
+                password_hash=password_hash,
+                password_set_utc=now,
+            )
+            rows.append(record.as_dict())
+            self._write_all_locked(rows)
+            return record
+
+    def set_password(self, *, tenant_id: str, user_id: str,
+                     password_hash: str) -> dict[str, Any]:
+        return self._update(
+            tenant_id, user_id,
+            password_hash=password_hash,
+            password_set_utc=_now(),
+        )
+
+    def touch_last_active(self, *, tenant_id: str, user_id: str) -> dict[str, Any]:
+        return self._update(tenant_id, user_id, last_active_utc=_now())
+
     def set_role(self, *, tenant_id: str, user_id: str,
                  role: str) -> dict[str, Any]:
         if role not in VALID_ROLES:
@@ -150,7 +209,8 @@ class LocalJsonUsersRepository:
 
 _USER_COLUMNS = (
     "id, tenant_id, email, role, status, allowed_assets, "
-    "invited_at_utc, last_active_utc, created_utc, updated_utc"
+    "invited_at_utc, last_active_utc, created_utc, updated_utc, "
+    "password_hash, password_set_utc"
 )
 
 
@@ -223,6 +283,56 @@ class PostgresUsersRepository:
             ).fetchone()
         return _serialize_row(row) if row else None
 
+    def get_by_email(self, *, tenant_id: str, email: str) -> dict[str, Any] | None:
+        if not tenant_id:
+            raise ValueError("tenant_id is required")
+        with pg_tenant(tenant_id, self.dsn) as conn:
+            row = conn.execute(
+                f"SELECT {_USER_COLUMNS} FROM users "
+                f"WHERE tenant_id = %s AND lower(email) = lower(%s)",
+                (tenant_id, email.strip()),
+            ).fetchone()
+        return _serialize_row(row) if row else None
+
+    def signup(self, *, tenant_id: str, email: str, role: str,
+               password_hash: str,
+               allowed_assets: list[str] | None = None,
+               id: str | None = None) -> UserRecord:
+        if not tenant_id or not email:
+            raise ValueError("tenant_id and email are required")
+        if role not in VALID_ROLES:
+            raise ValueError(f"unknown role: {role}")
+        from psycopg import errors
+        from psycopg.types.json import Json
+
+        try:
+            with pg_tenant(tenant_id, self.dsn) as conn:
+                row = conn.execute(
+                    f"INSERT INTO users (id, tenant_id, email, role, status, allowed_assets, "
+                    f"password_hash, password_set_utc, last_active_utc) "
+                    f"VALUES (COALESCE(%s, gen_random_uuid()::text), %s, %s, %s, 'active', %s, "
+                    f"%s, now(), now()) "
+                    f"RETURNING {_USER_COLUMNS}",
+                    (id, tenant_id, email.strip(), role, Json(list(allowed_assets or [])),
+                     password_hash),
+                ).fetchone()
+        except errors.UniqueViolation as exc:
+            raise ValueError(
+                f"user with email {email!r} already exists in tenant {tenant_id!r}"
+            ) from exc
+        return _record_from_row(row)
+
+    def set_password(self, *, tenant_id: str, user_id: str,
+                     password_hash: str) -> dict[str, Any]:
+        return self._update(
+            tenant_id, user_id,
+            password_hash=password_hash,
+            password_set_utc=_now(),
+        )
+
+    def touch_last_active(self, *, tenant_id: str, user_id: str) -> dict[str, Any]:
+        return self._update(tenant_id, user_id, last_active_utc=_now())
+
     def set_role(self, *, tenant_id: str, user_id: str, role: str) -> dict[str, Any]:
         if role not in VALID_ROLES:
             raise ValueError(f"unknown role: {role}")
@@ -275,7 +385,13 @@ def pg_tenant(tenant_id: str, dsn: str | None):
 def _serialize_row(row: dict[str, Any]) -> dict[str, Any]:
     """Match LocalJson's dict shape: ISO-8601 strings for the timestamp columns."""
     out = dict(row)
-    for key in ("invited_at_utc", "last_active_utc", "created_utc", "updated_utc"):
+    for key in (
+        "invited_at_utc",
+        "last_active_utc",
+        "created_utc",
+        "updated_utc",
+        "password_set_utc",
+    ):
         value = out.get(key)
         if value is not None and not isinstance(value, str):
             out[key] = value.isoformat()
@@ -292,6 +408,8 @@ def _record_from_row(row: dict[str, Any]) -> UserRecord:
         last_active_utc=data.get("last_active_utc"),
         created_utc=data.get("created_utc", ""),
         updated_utc=data.get("updated_utc", ""),
+        password_hash=data.get("password_hash"),
+        password_set_utc=data.get("password_set_utc"),
     )
 
 

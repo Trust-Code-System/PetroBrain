@@ -74,7 +74,7 @@ class LocalJsonDocumentRepository:
 
     def snapshot(self, *, tenant_id: str, since: str | None = None) -> list[dict[str, Any]]:
         """Full records (with chunks) created after ``since`` (ISO-8601), oldest
-        first — for the field app's incremental offline SOP cache."""
+        first - for the field app's incremental offline SOP cache."""
         rows = [r for r in self._read_all() if r.get("tenant_id") == tenant_id]
         if since:
             rows = [r for r in rows if r.get("created_utc", "") > since]

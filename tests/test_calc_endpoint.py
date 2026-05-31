@@ -1,4 +1,4 @@
-"""B7 backend tests — conversions, catalog completeness, /calc dispatcher."""
+"""B7 backend tests - conversions, catalog completeness, /calc dispatcher."""
 import os
 import sys
 

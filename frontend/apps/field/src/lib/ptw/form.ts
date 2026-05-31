@@ -21,7 +21,7 @@ export function ptwFormReducer(state: PtwFormState, action: PtwFormAction): PtwF
     case 'set_field':
       return { ...state, [action.field]: action.value };
     case 'set_work_type':
-      // Coerce defensively — the UI uses a typed Select but reducer
+      // Coerce defensively - the UI uses a typed Select but reducer
       // tests pass plain strings.
       if (!isWorkType(action.value)) return state;
       return { ...state, work_type: action.value };

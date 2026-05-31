@@ -56,7 +56,7 @@ class LocalJsonAdminDocumentRepository:
     JSONL-backed repository with full-rewrite updates.
 
     Acceptable for Phase-1 dev/test volumes. The Postgres swap point is the
-    ``admin_documents`` table referenced in A6 (audit log) — when that lands,
+    ``admin_documents`` table referenced in A6 (audit log) - when that lands,
     swap the backend behind ``get_admin_document_repository()``.
     """
 

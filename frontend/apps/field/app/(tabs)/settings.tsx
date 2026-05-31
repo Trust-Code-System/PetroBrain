@@ -52,7 +52,7 @@ export default function SettingsScreen() {
             Signed in
           </Text>
           <Text style={[styles.value, { color: theme.text, fontSize: scaleFontSize(16, textSize) }]}>
-            {session.principal.userId} — {session.principal.role}
+            {session.principal.userId} - {session.principal.role}
           </Text>
           <Text style={[styles.value, { color: theme.textMuted, fontSize: scaleFontSize(12, textSize) }]}>
             tenant: {session.principal.tenantId}

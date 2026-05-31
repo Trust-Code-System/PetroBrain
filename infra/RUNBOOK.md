@@ -104,7 +104,7 @@ terraform apply -var-file=terraform.tfvars
     --service petrobrain-<env>-api --task-definition petrobrain-<env>-api:<N-1>
   ```
 - **Infra rollback**: `git revert` the Terraform change and `apply`. Review the
-  plan — destructive diffs on RDS/Redis are blocked in prod by deletion
+  plan - destructive diffs on RDS/Redis are blocked in prod by deletion
   protection; never `-target` your way around that.
 
 ---
@@ -141,7 +141,7 @@ aws ecs update-service --cluster petrobrain-<env>-cluster --service petrobrain-<
   ```
   Validate, then update `petrobrain-<env>/database-url` and force a new
   deployment. RLS policies and pgvector come from the migrations, which are
-  idempotent — re-run `python -m app.db.pg` against the restored instance if in
+  idempotent - re-run `python -m app.db.pg` against the restored instance if in
   doubt.
 
 ---
@@ -151,7 +151,7 @@ aws ecs update-service --cluster petrobrain-<env>-cluster --service petrobrain-<
 ```bash
 terraform destroy -var-file=terraform.tfvars
 ```
-Prod has `deletion_protection` on RDS and takes a final snapshot — disable
+Prod has `deletion_protection` on RDS and takes a final snapshot - disable
 protection deliberately and document why before destroying.
 
 ---

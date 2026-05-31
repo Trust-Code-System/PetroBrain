@@ -1,10 +1,10 @@
 """
 Tenant management (B8).
 
-GET    /admin/tenants                   — platform_admin only, list all
-GET    /admin/tenants/{tenant_id}       — platform_admin OR tenant admin reading own row
-POST   /admin/tenants                   — platform_admin only
-PATCH  /admin/tenants/{tenant_id}       — platform_admin only (rename, suspend, ...)
+GET    /admin/tenants                   - platform_admin only, list all
+GET    /admin/tenants/{tenant_id}       - platform_admin OR tenant admin reading own row
+POST   /admin/tenants                   - platform_admin only
+PATCH  /admin/tenants/{tenant_id}       - platform_admin only (rename, suspend, ...)
 
 A suspension here is the cleanest kill-switch we have today: subsequent
 JWTs minted for that tenant still authenticate (signature still valid),

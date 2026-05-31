@@ -29,7 +29,7 @@ import { useFieldTheme } from '../../src/lib/session/useColorMode';
 import { scaleFontSize } from '../../src/theme/index';
 
 /**
- * /ptw/new — the form.
+ * /ptw/new - the form.
  *
  * On Generate the form is POSTed to /chat module=ptw; the backend
  * preamble + build_ptw_template tool produce a structured permit. The
@@ -55,7 +55,7 @@ export default function NewPtwScreen() {
       return;
     }
     if (!network.online) {
-      setError('PTW drafting needs the network — the LLM call goes through /chat.');
+      setError('PTW drafting needs the network - the LLM call goes through /chat.');
       return;
     }
     if (!session.token || !session.principal) {

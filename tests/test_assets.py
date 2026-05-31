@@ -42,7 +42,7 @@ def wire(monkeypatch, assets_repo):
     monkeypatch.setattr(asset_context_module, "_repository", lambda: assets_repo)
     # Orchestrator goes through asset_context_module via a lazy import in
     # orchestrator._resolve_asset_context, so patching the module factory is
-    # enough — no extra orchestrator wiring required.
+    # enough - no extra orchestrator wiring required.
 
 
 def _admin_headers(**overrides):
@@ -335,7 +335,7 @@ def test_orchestrator_falls_through_for_unknown_asset_context(assets_repo):
         tenant_id="tenant-a", asset_context="unknown-free-text",
     ))
 
-    # Unknown id falls through as free text — the prompt keeps the raw value
+    # Unknown id falls through as free text - the prompt keeps the raw value
     # and the retriever uses the legacy single-asset filter.
     assert "asset_context: unknown-free-text" in llm.captured_system
     assert retriever.calls[0]["asset"] == "unknown-free-text"

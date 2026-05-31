@@ -2,7 +2,7 @@
 #
 # Identical to requirements.txt EXCEPT the hosted-LLM cloud SDKs (anthropic,
 # openai) are removed: Tier B runs entirely inside the customer boundary against
-# a self-hosted, OpenAI-compatible endpoint (vLLM/TGI) over httpx — no outbound
+# a self-hosted, OpenAI-compatible endpoint (vLLM/TGI) over httpx - no outbound
 # calls to any public LLM API. The Tier-B image installs this file, and
 # infra/tier-b/check_no_cloud_sdks.py gate-fails if either SDK reappears here or
 # as a module-level import. Keep this in sync with requirements.txt.

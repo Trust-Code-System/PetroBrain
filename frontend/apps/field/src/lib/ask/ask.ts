@@ -59,7 +59,7 @@ export async function askOnline(query: string, opts: OnlineAskOpts): Promise<Ask
 }
 
 /**
- * Offline Ask path — search the local SQLite cache and synthesise a short
+ * Offline Ask path - search the local SQLite cache and synthesise a short
  * answer from the top hit. The "answer" is the chunk text itself
  * preceded by the document title + clause, so the user always sees
  * provenance and the TTS reads the source verbatim.
@@ -87,7 +87,7 @@ export async function askOffline(
 
 function noMatch(): AskAnswer {
   return {
-    text: "I don't have anything matching that question in the offline cache. Try again when online — the chat surface has retrieval over your tenant's full SOP set.",
+    text: "I don't have anything matching that question in the offline cache. Try again when online - the chat surface has retrieval over your tenant's full SOP set.",
     citations: [],
     source: 'no_match',
   };

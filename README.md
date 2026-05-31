@@ -1,22 +1,22 @@
-# PetroBrain — Phase-1 Repository (Tier A spine + two specialist modules)
+# PetroBrain - Phase-1 Repository (Tier A spine + two specialist modules)
 
 [![CI](https://github.com/Lingz450/PetroBrain/actions/workflows/ci.yml/badge.svg)](https://github.com/Lingz450/PetroBrain/actions/workflows/ci.yml)
 
 A working Phase-1 scaffold for a domain-locked oil & gas AI. This repo contains:
 
-1. **The shared spine** — FastAPI services, the orchestrator/agent runtime, the
+1. **The shared spine** - FastAPI services, the orchestrator/agent runtime, the
    LLM-provider abstraction (Tier A hosted / Tier B self-hosted), the safety guardrail
    layer, and the RAG pipeline (clause-aware chunking → embeddings → pgvector hybrid
    search → rerank).
-2. **The deterministic calculation engine** — unit-safe (`pint`) engineering calcs.
+2. **The deterministic calculation engine** - unit-safe (`pint`) engineering calcs.
    Numbers come from here, never from the LLM's head.
-3. **Specialist module A — Well Control / Kill Sheet** — fully built: KMW, ICP, FCP,
+3. **Specialist module A - Well Control / Kill Sheet** - fully built: KMW, ICP, FCP,
    strokes, Wait-and-Weight pressure schedule, influx analysis, MAASP, live-event
    routing, and the decision-support safety banner.
-4. **Specialist module B — NUPRC Tier-3 MRV** — emissions engine (flaring carbon
+4. **Specialist module B - NUPRC Tier-3 MRV** - emissions engine (flaring carbon
    balance, venting, fugitive Tier 2 *and* Tier 3, combustion), CO2e with configurable
    IPCC GWP, and a GHGEMP report generator with tier-readiness gaps and an audit hash.
-5. **The eval / safety harness** — golden engineering set + a red-team safety set that
+5. **The eval / safety harness** - golden engineering set + a red-team safety set that
    must pass with **zero failures** before any deploy.
 
 All engineering math is validated by tests (`python tests/test_calculations.py` →
@@ -95,7 +95,7 @@ cp .env.example .env     # add ANTHROPIC_API_KEY / OPENAI_API_KEY
 uvicorn app.main:app --reload
 # POST /chat, /well-control/kill-sheet, /emissions/inventory  (see app/models/schemas.py)
 
-# 5. async document ingestion (A5) — run the Celery worker
+# 5. async document ingestion (A5) - run the Celery worker
 celery -A app.workers.celery_app worker --loglevel=info -Q petrobrain.ingest
 # then POST a SOP as multipart:
 #   curl -X POST http://localhost:8000/admin/documents \
@@ -142,7 +142,7 @@ is the full worked engine (validated: KMW 10.37 ppg, ICP 1200 psi, FCP 864 psi, 
 preamble + tool schema) and the live-event routing.
 
 **(c) NUPRC Tier-3 MRV product** → `app/modules/emissions_mrv/`. `engine.py` computes the
-inventory; the *same* engine serves Tier 2 (factor-based) and Tier 3 (measurement-based) —
+inventory; the *same* engine serves Tier 2 (factor-based) and Tier 3 (measurement-based) -
 the difference is recorded per line, which is exactly the Q3-2026→Jan-2027 transition.
 `ghgemp_template.py` emits the audit-ready report with tier-readiness gaps.
 
@@ -160,4 +160,4 @@ the difference is recorded per line, which is exactly the Q3-2026→Jan-2027 tra
 > Compliance note: GWP values and emission factors in `emissions_mrv/factors.py` are
 > reference values. Before any NUPRC filing, set them to the current gazetted NUPRC
 > guidance and the operator's applicable IPCC tier, and record the source in the audit
-> trail. PetroBrain is decision support — submissions remain the operator's responsibility.
+> trail. PetroBrain is decision support - submissions remain the operator's responsibility.

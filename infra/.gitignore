@@ -1,4 +1,4 @@
-# Terraform working dirs and state — never commit these.
+# Terraform working dirs and state - never commit these.
 .terraform/
 *.tfstate
 *.tfstate.*

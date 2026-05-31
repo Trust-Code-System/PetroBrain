@@ -1,4 +1,4 @@
-"""B8 backend tests — tenants CRUD, users CRUD, role gates."""
+"""B8 backend tests - tenants CRUD, users CRUD, role gates."""
 import os
 import sys
 

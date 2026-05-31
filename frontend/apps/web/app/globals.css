@@ -2,9 +2,129 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --pb-bg-base: #fbf9f6;
+  --pb-ink: #1c1917;
+  --pb-bg-tint-a: rgba(253, 186, 116, 0.18);
+  --pb-bg-tint-b: rgba(249, 115, 22, 0.10);
+  --pb-bg-tint-c: rgba(255, 255, 255, 0.6);
+  --pb-bg-tint-d: rgba(253, 230, 138, 0.15);
+}
+
+html.dark {
+  --pb-bg-base: #0a0a0a;
+  --pb-ink: #e5e7eb;
+  --pb-bg-tint-a: rgba(124, 45, 18, 0.35);
+  --pb-bg-tint-b: rgba(194, 65, 12, 0.20);
+  --pb-bg-tint-c: rgba(15, 23, 42, 0.6);
+  --pb-bg-tint-d: rgba(120, 53, 15, 0.25);
+}
+
 html,
 body {
-  background-color: #fafaf9;
-  color: #1c1917;
-  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--pb-bg-base);
+  color: var(--pb-ink);
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  /* Layered mesh - three radial tints + a faint warm wash */
+  background-image:
+    radial-gradient(900px 600px at 8% -10%, var(--pb-bg-tint-a), transparent 60%),
+    radial-gradient(700px 500px at 100% 0%, var(--pb-bg-tint-b), transparent 55%),
+    radial-gradient(900px 600px at 50% 120%, var(--pb-bg-tint-d), transparent 60%);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+/* Themed scrollbars - match the brand instead of OS chrome */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(234, 88, 12, 0.3) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(249, 115, 22, 0.35), rgba(194, 65, 12, 0.45));
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(249, 115, 22, 0.55), rgba(194, 65, 12, 0.65));
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+/* Native form-element resets so any stray <select>, <input>, <textarea>
+   picks up the brand color scheme instead of OS chrome. The custom
+   Select primitive renders its own button - these rules just stop the
+   browser's accent color from leaking through in places we didn't catch. */
+:root {
+  accent-color: #ea580c;
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
+select,
+input[type='checkbox'],
+input[type='radio'],
+input[type='range'] {
+  accent-color: #ea580c;
+}
+
+/* Selection highlight - branded instead of OS blue */
+::selection {
+  background-color: rgba(249, 115, 22, 0.25);
+  color: #431407;
+}
+html.dark ::selection {
+  background-color: rgba(249, 115, 22, 0.35);
+  color: #fed7aa;
+}
+
+/* Subtle focus polish across the app */
+:focus-visible {
+  outline: none;
+}
+
+.pb-thinking-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    rgba(15, 23, 42, 0.30) 0%,
+    rgba(15, 23, 42, 0.85) 50%,
+    rgba(15, 23, 42, 0.30) 100%
+  );
+}
+html.dark .pb-thinking-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    rgba(229, 231, 235, 0.30) 0%,
+    rgba(229, 231, 235, 0.95) 50%,
+    rgba(229, 231, 235, 0.30) 100%
+  );
+}
+
+/* Utility - hide the scrollbar while preserving scroll behavior. Applied
+   to the chat composer textarea so the orange branded arrows don't draw
+   attention to a control the user is actively typing in. */
+.scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }

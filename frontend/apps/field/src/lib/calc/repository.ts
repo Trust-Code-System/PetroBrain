@@ -1,5 +1,5 @@
 /**
- * Recent calc results — local SQLite, capped at 50 rows per tenant.
+ * Recent calc results - local SQLite, capped at 50 rows per tenant.
  *
  * Save / list / get / delete. The cap is enforced on insert: after each
  * save we trim everything older than the 50th row for the tenant. This

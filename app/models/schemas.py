@@ -6,6 +6,26 @@ from datetime import date
 from pydantic import BaseModel, Field
 
 
+class ChatAttachment(BaseModel):
+    """
+    One file the user attached to a chat turn.
+
+    ``kind`` drives how the orchestrator routes the payload:
+        - ``image``    → forwarded to the LLM as a vision content block.
+        - ``text``     → ``data`` holds the extracted text; inlined into the prompt.
+        - ``document`` → metadata only; we tell the model the user attached a
+                         non-text doc so it can guide them to the Documents tab.
+
+    ``data`` is base64 (no data-URL prefix) for images and plain UTF-8 text for
+    ``text`` kind. ``mime_type`` is used by the Anthropic image block.
+    """
+
+    name: str
+    kind: str  # "image" | "text" | "document"
+    mime_type: str = "application/octet-stream"
+    data: str | None = None
+
+
 class ChatRequest(BaseModel):
     message: str
     module: str = "general"          # general | well_control | emissions_mrv | ptw
@@ -13,6 +33,7 @@ class ChatRequest(BaseModel):
     jurisdiction: str | None = None
     asset_context: str | None = None
     offline_mode: bool = False
+    attachments: list[ChatAttachment] = Field(default_factory=list)
 
 
 class ChatResponse(BaseModel):

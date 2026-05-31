@@ -17,11 +17,11 @@ import type { FieldTheme } from '../../src/theme/index';
 import { scaleFontSize } from '../../src/theme/index';
 
 /**
- * Ask tab — voice-first surface (voice ASR is a TODO placeholder).
+ * Ask tab - voice-first surface (voice ASR is a TODO placeholder).
  *
  * Online: ``POST /chat`` with the user's principal.
  * Offline: ``askOffline`` searches the SQLite SOP cache. If nothing
- * matches, the answer says so honestly — no fabrication.
+ * matches, the answer says so honestly - no fabrication.
  *
  * The answer is rendered AND spoken via expo-speech in the user's
  * preferred language (English active; Pidgin/Yoruba/Hausa stubs).
@@ -114,7 +114,7 @@ export default function AskScreen() {
           accessibilityRole="button"
           accessibilityLabel="Hold to talk (voice input not yet available)"
           onPress={() => {
-            setError('Voice input is not yet wired — paste or type the question for now.');
+            setError('Voice input is not yet wired - paste or type the question for now.');
           }}
           style={[styles.mic, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}
         >

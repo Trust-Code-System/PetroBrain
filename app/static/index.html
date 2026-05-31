@@ -4,14 +4,59 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>PetroBrain Console</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23162321'/%3E%3Cpath d='M8 22h16M10 18h12M13 8h6l3 8H10z' stroke='%23d69e2e' stroke-width='2' fill='none'/%3E%3C/svg%3E">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3CradialGradient id='b' cx='40%25' cy='32%25' r='78%25'%3E%3Cstop offset='0%25' stop-color='%23ffe2bf'/%3E%3Cstop offset='42%25' stop-color='%23f97316'/%3E%3Cstop offset='100%25' stop-color='%237c2d12'/%3E%3C/radialGradient%3E%3C/defs%3E%3Cpath d='M32 4 C32 4 11 27 11 41.5 a21 21 0 1 0 42 0 C53 27 32 4 32 4 Z' fill='url(%23b)'/%3E%3Cellipse cx='22' cy='22' rx='3' ry='5' fill='%23fff' opacity='0.85' transform='rotate(-22 22 22)'/%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="/static/styles.css">
   </head>
   <body>
     <header class="topbar">
-      <div>
-        <h1>PetroBrain</h1>
-        <p>Tier-A operations console</p>
+      <div class="brand">
+        <svg class="brand-logo" viewBox="0 0 64 64" width="44" height="44" role="img" aria-label="PetroBrain">
+          <defs>
+            <radialGradient id="pb-body" cx="40%" cy="32%" r="78%">
+              <stop offset="0%" stop-color="#ffe2bf"/>
+              <stop offset="18%" stop-color="#ffbf80"/>
+              <stop offset="42%" stop-color="#f97316"/>
+              <stop offset="72%" stop-color="#c2410c"/>
+              <stop offset="100%" stop-color="#7c2d12"/>
+            </radialGradient>
+            <radialGradient id="pb-rim" cx="50%" cy="55%" r="55%">
+              <stop offset="60%" stop-color="#f97316" stop-opacity="0"/>
+              <stop offset="86%" stop-color="#7c2d12" stop-opacity="0.55"/>
+              <stop offset="100%" stop-color="#431407" stop-opacity="0.85"/>
+            </radialGradient>
+            <radialGradient id="pb-inner" cx="62%" cy="70%" r="40%">
+              <stop offset="0%" stop-color="#ffd6a3" stop-opacity="0.85"/>
+              <stop offset="100%" stop-color="#fb923c" stop-opacity="0"/>
+            </radialGradient>
+            <linearGradient id="pb-spec" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
+              <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+            </linearGradient>
+            <radialGradient id="pb-floor" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#431407" stop-opacity="0.45"/>
+              <stop offset="100%" stop-color="#431407" stop-opacity="0"/>
+            </radialGradient>
+            <clipPath id="pb-clip">
+              <path d="M32 4 C32 4 11 27 11 41.5 a21 21 0 1 0 42 0 C53 27 32 4 32 4 Z"/>
+            </clipPath>
+          </defs>
+          <ellipse cx="32" cy="60" rx="17" ry="2.6" fill="url(#pb-floor)"/>
+          <path d="M32 4 C32 4 11 27 11 41.5 a21 21 0 1 0 42 0 C53 27 32 4 32 4 Z" fill="url(#pb-body)"/>
+          <g clip-path="url(#pb-clip)">
+            <ellipse cx="40" cy="46" rx="14" ry="10" fill="url(#pb-inner)"/>
+            <path d="M32 4 C32 4 11 27 11 41.5 a21 21 0 1 0 42 0 C53 27 32 4 32 4 Z" fill="url(#pb-rim)"/>
+            <path d="M24 12 C18 22 14.5 31 14.5 39 C14.5 43.5 16.5 46.5 19.5 47.5 C18.5 41 21 31.5 27 21 C28.5 18 26 11 24 12 Z" fill="url(#pb-spec)" opacity="0.9"/>
+            <ellipse cx="22.5" cy="22" rx="2.2" ry="3.6" fill="#fff" opacity="0.95" transform="rotate(-22 22.5 22)"/>
+            <ellipse cx="42" cy="50" rx="4.2" ry="2.4" fill="#fff" opacity="0.45" transform="rotate(-18 42 50)"/>
+          </g>
+        </svg>
+        <div class="brand-text">
+          <h1>PetroBrain</h1>
+          <p>Tier-A operations console</p>
+        </div>
       </div>
       <div class="auth-strip">
         <label for="authToken">API token</label>

@@ -22,7 +22,7 @@ describe('searchCache', () => {
   it('returns the hot-work permit chunks for the canonical offline query', () => {
     const hits = searchCache('show me hot-work permit procedure', SEED_DOCUMENTS, SEED_CHUNKS);
     expect(hits.length).toBeGreaterThan(0);
-    // The top hit must be a hot-work clause — that's the offline DoD.
+    // The top hit must be a hot-work clause - that's the offline DoD.
     expect(hits[0]!.document.document_id).toBe('SOP-HOTWORK-001');
     expect(hits[0]!.matched_terms).toContain('hot');
     expect(hits[0]!.matched_terms).toContain('work');
@@ -31,7 +31,7 @@ describe('searchCache', () => {
 
   it('weights title hits over body-only hits', () => {
     const hits = searchCache('hot-work permit', SEED_DOCUMENTS, SEED_CHUNKS);
-    // Title carries "Hot-work permit procedure" — every hot-work chunk
+    // Title carries "Hot-work permit procedure" - every hot-work chunk
     // gets the title bonus, so all three hot-work chunks outrank the
     // single body-only mention in KICK's "shut-in" clause.
     expect(hits.every((h) => h.document.document_id === 'SOP-HOTWORK-001')).toBe(true);

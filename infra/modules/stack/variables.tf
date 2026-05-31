@@ -5,7 +5,7 @@ variable "env" {
 
 variable "region" {
   type    = string
-  default = "af-south-1" # Cape Town — sovereign default
+  default = "af-south-1" # Cape Town - sovereign default
 }
 
 variable "image" {

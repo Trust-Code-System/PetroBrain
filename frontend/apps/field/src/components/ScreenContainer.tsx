@@ -14,7 +14,7 @@ export interface ScreenContainerProps {
   children: React.ReactNode;
 }
 
-/** Common screen frame — safe area, network banner, padded body. */
+/** Common screen frame - safe area, network banner, padded body. */
 export function ScreenContainer({ theme, textSize, scroll = true, children }: ScreenContainerProps) {
   const Inner = scroll ? ScrollView : View;
   return (

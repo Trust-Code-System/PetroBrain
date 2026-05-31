@@ -3,21 +3,21 @@ Data-readiness score (B8).
 
 Derives a per-tenant readiness signal from the data we already store:
 
-  * documents_loaded      — count of admin-uploaded docs (A5 store)
-  * documents_done        — subset with status='done' (text indexed)
-  * documents_failed      — subset with status='failed'
-  * assets_total          — count of registered assets (A9 store)
-  * assets_by_type        — breakdown so the dashboard can show gaps
-  * users_active          — count of activated users (B8 users repo)
-  * users_pending         — count of invited but not yet active users
-  * connector_status      — Phase-1 stub (no historian connector yet)
+  * documents_loaded      - count of admin-uploaded docs (A5 store)
+  * documents_done        - subset with status='done' (text indexed)
+  * documents_failed      - subset with status='failed'
+  * assets_total          - count of registered assets (A9 store)
+  * assets_by_type        - breakdown so the dashboard can show gaps
+  * users_active          - count of activated users (B8 users repo)
+  * users_pending         - count of invited but not yet active users
+  * connector_status      - Phase-1 stub (no historian connector yet)
 
 Every numeric is rolled into a 0-100 ``readiness_pct`` weighted by the
 roadmap's priorities (documents 50, assets 30, users 10, connectors 10).
 
 Tenant scoping:
   * platform_admin can pass ?tenant_id=X to read any tenant.
-  * Anyone else gets their own tenant — the ?tenant_id parameter is
+  * Anyone else gets their own tenant - the ?tenant_id parameter is
     rejected with 403 if it disagrees with the principal's tenant.
 """
 from __future__ import annotations
@@ -123,7 +123,7 @@ def _asset_completeness(by_type: Counter) -> float:
     Asset hierarchy is considered complete when the canonical four levels
     (field, block, train, equipment) are present. Each level contributes
     25%. Tenants using a different naming convention still get credit for
-    every recognised level — better partial coverage than a hard zero.
+    every recognised level - better partial coverage than a hard zero.
     """
     expected = ("field", "block", "train", "equipment")
     return sum(25.0 for level in expected if by_type.get(level, 0) > 0)

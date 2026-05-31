@@ -1,6 +1,6 @@
 /**
  * Permit-to-Work types, mirroring the backend ``app/modules/ptw``
- * shapes. Pure TS — importable from Vitest without RN.
+ * shapes. Pure TS - importable from Vitest without RN.
  */
 export const WORK_TYPES = [
   'hot_work',
@@ -30,7 +30,7 @@ export const WORK_TYPE_LABELS: Record<WorkType, string> = {
 
 export type OutputFormat = 'permit' | 'toolbox_talk';
 
-/** Form state — what the user enters on the field. */
+/** Form state - what the user enters on the field. */
 export interface PtwFormState {
   job_description: string;
   location: string;
@@ -57,7 +57,7 @@ export const EMPTY_PTW_FORM: PtwFormState = {
   asset_id: null,
 };
 
-/** Backend response shape — matches build_ptw() in app/modules/ptw/template.py. */
+/** Backend response shape - matches build_ptw() in app/modules/ptw/template.py. */
 export interface PtwSignOffEntry {
   name: string | null;
   signed_utc: string | null;
@@ -89,7 +89,7 @@ export interface GeneratedPermit {
   briefing?: string[];
 }
 
-/** Local persistence shape — what we store in SQLite. */
+/** Local persistence shape - what we store in SQLite. */
 export interface SavedPermit {
   id: string;
   tenant_id: string;

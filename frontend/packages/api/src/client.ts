@@ -3,11 +3,11 @@
  *
  * Wraps openapi-fetch with the JWT-bearing auth middleware and an error
  * boundary that surfaces FastAPI's ``{ detail }`` payloads. The ``paths``
- * type comes from the generated OpenAPI file — every route, method,
+ * type comes from the generated OpenAPI file - every route, method,
  * payload and response is checked at compile time.
  *
  * Run ``pnpm gen:api`` after any backend schema change. Until the first
- * generation runs the import below intentionally fails — that's the
+ * generation runs the import below intentionally fails - that's the
  * compile-time signal to regenerate the client.
  */
 import createClient, { type ClientOptions, type Middleware } from 'openapi-fetch';

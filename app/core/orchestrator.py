@@ -38,6 +38,7 @@ from app.modules.emissions_mrv.agent import (
     run_fugitive_tier3_tool,
     run_venting_tool,
 )
+from app.core.web_search import WEB_SEARCH_TOOL, run_web_search_tool
 from app.modules.ptw.agent import BUILD_PTW_TEMPLATE_TOOL, run_build_ptw_template_tool
 from app.modules.well_control.agent import KILL_SHEET_TOOL, run_kill_sheet_tool
 
@@ -63,10 +64,11 @@ TOOL_REGISTRY: dict[str, tuple[dict, Callable[[dict], dict]]] = {
     "combustion_emissions": (COMBUSTION_TOOL, run_combustion_tool),
     "build_ghgemp_report": (BUILD_GHGEMP_REPORT_TOOL, run_build_ghgemp_report_tool),
     "build_ptw_template": (BUILD_PTW_TEMPLATE_TOOL, run_build_ptw_template_tool),
+    "web_search": (WEB_SEARCH_TOOL, run_web_search_tool),
 }
 
 MODULE_TOOLS = {
-    "well_control": ["build_kill_sheet"],
+    "well_control": ["build_kill_sheet", "web_search"],
     "emissions_mrv": [
         "flaring_emissions",
         "venting_emissions",
@@ -74,9 +76,10 @@ MODULE_TOOLS = {
         "fugitive_tier3",
         "combustion_emissions",
         "build_ghgemp_report",
+        "web_search",
     ],
-    "ptw": ["build_ptw_template"],
-    "general": [],
+    "ptw": ["build_ptw_template", "web_search"],
+    "general": ["web_search"],
 }
 
 
@@ -89,6 +92,98 @@ class Turn:
     citations: list[dict[str, Any]] = field(default_factory=list)
 
 
+# Anthropic accepts image content blocks up to ~5 MB base64-decoded. Stay
+# under that with a guard so we don't surface a 4xx to the user mid-stream.
+_MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+
+def _build_user_message_content(
+    user_text: str, attachments: list[Any] | None
+) -> Any:
+    """
+    Build the ``content`` value for the LLM's user turn.
+
+    Anthropic's Messages API accepts either a plain string or a list of
+    content blocks. We use the string form when there are no images so
+    self-hosted OpenAI-compatible providers keep working unchanged. When
+    images are present we switch to the content-block form, which is what
+    the Anthropic SDK already forwards untouched in ``LLMService``.
+
+    Text-style attachments (.txt/.md/etc.) are inlined into the text block
+    with a clear delimiter so the model treats them as user-supplied
+    context. Image attachments become ``image`` blocks. Unknown / document
+    kinds become a short note so the model knows the user attached
+    something it can't see and should ask for ingestion via the Documents
+    tab.
+    """
+
+    atts = [a for a in (attachments or []) if a is not None]
+    if not atts:
+        return user_text
+
+    inlined_text: list[str] = []
+    image_blocks: list[dict[str, Any]] = []
+    note_lines: list[str] = []
+
+    for a in atts:
+        kind = getattr(a, "kind", None) or (
+            a.get("kind") if isinstance(a, dict) else None
+        )
+        name = getattr(a, "name", None) or (
+            a.get("name") if isinstance(a, dict) else "attachment"
+        )
+        data = getattr(a, "data", None) or (
+            a.get("data") if isinstance(a, dict) else None
+        )
+        mime = (
+            getattr(a, "mime_type", None)
+            or (a.get("mime_type") if isinstance(a, dict) else None)
+            or "application/octet-stream"
+        )
+
+        if kind == "image" and data:
+            # Defensive size guard so we don't ship an oversized payload.
+            # Base64 length ~= 4/3 * raw bytes.
+            if len(data) * 3 // 4 > _MAX_IMAGE_BYTES:
+                note_lines.append(
+                    f"[image {name!r} was too large to attach; ask the user to "
+                    f"resize and resend]"
+                )
+                continue
+            image_blocks.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": mime if mime.startswith("image/") else "image/png",
+                    "data": data,
+                },
+            })
+            note_lines.append(f"[image attached: {name}]")
+        elif kind == "text" and data:
+            inlined_text.append(f"--- {name} ---\n{data}\n--- end {name} ---")
+        else:
+            note_lines.append(
+                f"[document attached: {name} - ingest via the Documents tab "
+                f"to make it searchable]"
+            )
+
+    text_parts: list[str] = []
+    if user_text:
+        text_parts.append(user_text)
+    text_parts.extend(note_lines)
+    text_parts.extend(inlined_text)
+    joined_text = "\n\n".join(p for p in text_parts if p)
+
+    if not image_blocks:
+        return joined_text or user_text
+
+    blocks: list[dict[str, Any]] = []
+    if joined_text:
+        blocks.append({"type": "text", "text": joined_text})
+    blocks.extend(image_blocks)
+    return blocks
+
+
 class Orchestrator:
     def __init__(self, retriever=None, llm: LLMService | None = None) -> None:
         self.retriever = retriever
@@ -98,6 +193,7 @@ class Orchestrator:
         self, user_text: str, *, module: str = "general", tenant_id: str = "",
         user_role: str | None = None, jurisdiction: str | None = None,
         asset_context: str | None = None, offline_mode: bool = False,
+        attachments: list[Any] | None = None,
     ) -> Turn:
         flags: list[str] = []
 
@@ -147,15 +243,17 @@ class Orchestrator:
             ]
 
         # 3. system prompt
+        has_attachments = bool(attachments)
         system = build_system_prompt(
             module=module, user_role=user_role, jurisdiction=jurisdiction,
             asset_context=prompt_asset_context, retrieved_context=retrieved_text or None,
-            offline_mode=offline_mode,
+            offline_mode=offline_mode, has_attachments=has_attachments,
         )
 
         # 4. LLM + tools
         tools = [TOOL_REGISTRY[t][0] for t in MODULE_TOOLS.get(module, [])]
-        messages: list[dict[str, Any]] = [{"role": "user", "content": user_text}]
+        user_content = _build_user_message_content(user_text, attachments)
+        messages: list[dict[str, Any]] = [{"role": "user", "content": user_content}]
         try:
             resp = await self.llm.complete(system, messages, tools=tools or None)
         except LLMConfigurationError as exc:
@@ -219,7 +317,7 @@ class Orchestrator:
                                  "content": str(result)}],
                 })
             # 6. feed results back for the final natural-language answer
-            messages.append({"role": "assistant", "content": resp.text or "[tool_use]"})
+            messages.append(_assistant_turn_with_tool_use(resp.text, resp.tool_calls))
             messages += tool_blocks
             try:
                 resp = await self.llm.complete(system, messages, tools=tools or None)
@@ -262,6 +360,7 @@ class Orchestrator:
         self, user_text: str, *, module: str = "general", tenant_id: str = "",
         user_role: str | None = None, jurisdiction: str | None = None,
         asset_context: str | None = None, offline_mode: bool = False,
+        attachments: list[Any] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         flags: list[str] = []
         pre = pre_check(user_text)
@@ -320,13 +419,15 @@ class Orchestrator:
                 retrieved_citations.append(citation)
                 yield {"event": "citation", "data": citation}
 
+        has_attachments = bool(attachments)
         system = build_system_prompt(
             module=module, user_role=user_role, jurisdiction=jurisdiction,
             asset_context=prompt_asset_context, retrieved_context=retrieved_text or None,
-            offline_mode=offline_mode,
+            offline_mode=offline_mode, has_attachments=has_attachments,
         )
         tools = [TOOL_REGISTRY[t][0] for t in MODULE_TOOLS.get(module, [])]
-        messages: list[dict[str, Any]] = [{"role": "user", "content": user_text}]
+        user_content = _build_user_message_content(user_text, attachments)
+        messages: list[dict[str, Any]] = [{"role": "user", "content": user_content}]
         tool_results: list[dict[str, Any]] = []
         numbers_from_tools = False
 
@@ -362,15 +463,36 @@ class Orchestrator:
                             "result": result,
                         }}
                         tool_results.append({"tool": call["name"], "input": tool_input, "result": result})
+                        # Web-search results carry their own citation set (title +
+                        # URL of each source). Surface them alongside the RAG
+                        # citations so the chat UI can render click-through chips
+                        # and the audit log keeps a single citations list.
+                        for citation in _web_search_citations(call.get("name"), result):
+                            retrieved_citations.append(citation)
+                            yield {"event": "citation", "data": citation}
                         tool_blocks.append({
                             "role": "user",
-                            "content": [{"type": "tool_result", "tool_use_id": call.get("id"),
-                                         "content": str(result)}],
+                            "content": [{
+                                "type": "tool_result",
+                                "tool_use_id": call.get("id"),
+                                # JSON-serialise the result so Claude sees clean
+                                # key/value text - str(dict) gives Python repr
+                                # (single quotes, escaped strings) which the
+                                # model treats as low-signal noise and answers
+                                # tersely or not at all.
+                                "content": json.dumps(result, default=str, ensure_ascii=False),
+                            }],
                         })
-                    messages.append({"role": "assistant", "content": resp.text or "[tool_use]"})
+                    messages.append(_assistant_turn_with_tool_use(resp.text, resp.tool_calls))
                     messages += tool_blocks
-                    answer_chunks, final = await self._stream_llm_to_events(system, messages, tools, emit=True)
-                    async for event in answer_chunks:
+                    # Pass tools=None on the final call so the model commits to
+                    # prose instead of chaining another tool_use (which the
+                    # single-round dispatcher would silently drop, leaving the
+                    # answer empty and the UI stuck on "Thinking").
+                    final: dict[str, Any] = {"text": "", "tool_calls": [], "usage": {}, "model": ""}
+                    async for event in self._stream_llm_to_events(
+                        system, messages, None, final, emit=True,
+                    ):
                         yield event
                     answer_text = final["text"]
                     model = final["model"]
@@ -378,8 +500,10 @@ class Orchestrator:
                 elif answer_text:
                     yield {"event": "token", "data": {"text": answer_text}}
             else:
-                answer_chunks, final = await self._stream_llm_to_events(system, messages, None, emit=True)
-                async for event in answer_chunks:
+                final = {"text": "", "tool_calls": [], "usage": {}, "model": ""}
+                async for event in self._stream_llm_to_events(
+                    system, messages, None, final, emit=True,
+                ):
                     yield event
                 answer_text = final["text"]
                 model = final["model"]
@@ -427,15 +551,21 @@ class Orchestrator:
         }}
 
     async def _stream_llm_to_events(self, system: str, messages: list[dict[str, Any]],
-                                    tools: list[dict[str, Any]] | None, *, emit: bool):
-        events: list[dict[str, Any]] = []
-        final: dict[str, Any] = {"text": "", "tool_calls": [], "usage": {}, "model": ""}
+                                    tools: list[dict[str, Any]] | None,
+                                    final: dict[str, Any], *, emit: bool):
+        """Yield ``{"event": "token", "data": {...}}`` events live as the LLM
+        produces them, populating ``final`` (a caller-owned dict) with the
+        terminal text/tool_calls/usage/model. Yielding live is the difference
+        between a typewriter answer and a single burst that lands after the
+        whole response has finished generating - the previous implementation
+        buffered events into a list and only yielded after the stream closed.
+        """
         if hasattr(self.llm, "stream_complete"):
             async for item in self.llm.stream_complete(system, messages, tools=tools or None):
                 if item.get("type") == "token":
                     final["text"] += item.get("text", "")
                     if emit:
-                        events.append({"event": "token", "data": {"text": item.get("text", "")}})
+                        yield {"event": "token", "data": {"text": item.get("text", "")}}
                 elif item.get("type") == "done":
                     final.update({
                         "text": item.get("text", final["text"]),
@@ -445,20 +575,12 @@ class Orchestrator:
                     })
         else:
             resp = await self.llm.complete(system, messages, tools=tools or None)
-            final = {
-                "text": resp.text,
-                "tool_calls": resp.tool_calls,
-                "usage": resp.usage,
-                "model": resp.model,
-            }
+            final["text"] = resp.text
+            final["tool_calls"] = resp.tool_calls
+            final["usage"] = resp.usage
+            final["model"] = resp.model
             if emit and resp.text:
-                events.append({"event": "token", "data": {"text": resp.text}})
-
-        async def _iter_events():
-            for event in events:
-                yield event
-
-        return _iter_events(), final
+                yield {"event": "token", "data": {"text": resp.text}}
 
     def _execute_tool_call(self, call: dict[str, Any], *, flags: list[str], tenant_id: str,
                            module: str, retrieved_clauses: list[str]) -> dict[str, Any]:
@@ -500,6 +622,57 @@ class Orchestrator:
                 },
             }}
         return {"input": audit_tool_input, "result": result}
+
+
+def _assistant_turn_with_tool_use(text: str, tool_calls: list[dict[str, Any]]) -> dict[str, Any]:
+    """Rebuild the assistant turn that owns the tool_use blocks.
+
+    Anthropic's Messages API rejects a follow-up turn whose tool_result blocks
+    reference a tool_use_id that did not appear in the previous assistant turn.
+    Plain-text echoes ("[tool_use]") satisfy our internal types but fail the
+    wire validator with a 400. We have to round-trip the actual blocks.
+    """
+    blocks: list[dict[str, Any]] = []
+    if text:
+        blocks.append({"type": "text", "text": text})
+    for call in tool_calls:
+        blocks.append({
+            "type": "tool_use",
+            "id": call.get("id"),
+            "name": call.get("name"),
+            "input": call.get("input") or {},
+        })
+    return {"role": "assistant", "content": blocks}
+
+
+def _web_search_citations(tool_name: Any, result: Any) -> list[dict[str, Any]]:
+    """Pull citation chips out of a web_search tool result.
+
+    Each result row gives us a title + URL. The frontend's Citation type
+    treats ``revision`` / ``clause`` as optional and renders chips with a URL
+    as click-throughs. Returns an empty list for any other tool, including
+    web_search when it returned an error or disabled payload.
+    """
+    if tool_name != "web_search" or not isinstance(result, dict):
+        return []
+    rows = result.get("results")
+    if not isinstance(rows, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        url = row.get("url")
+        title = row.get("title")
+        if not isinstance(url, str) or not url:
+            continue
+        out.append({
+            "title": title if isinstance(title, str) and title else url,
+            "revision": None,
+            "clause": None,
+            "url": url,
+        })
+    return out
 
 
 def _tool_input_as_dict(value: Any) -> dict[str, Any]:

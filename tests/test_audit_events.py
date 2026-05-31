@@ -139,11 +139,11 @@ def test_chat_writes_one_event_per_tool_call(monkeypatch, events_repo):
     assert chat_row["module"] == "well_control"
     assert tool_row["module"] == "well_control"
 
-    # Hashes are deterministic — recomputing the canonical hash matches.
+    # Hashes are deterministic - recomputing the canonical hash matches.
     assert tool_row["request_hash"] == sha256_canonical(_valid_kill_sheet_input())
 
     # Raw kill-sheet numbers ARE in the response body but MUST NOT appear in the
-    # audit store — only the hashes are persisted.
+    # audit store - only the hashes are persisted.
     body = r.json()
     assert body["tool_results"][0]["result"]["kill_mud_weight_ppg"] == 10.37
     raw = events_repo.path.read_text(encoding="utf-8")

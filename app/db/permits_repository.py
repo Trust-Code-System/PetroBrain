@@ -1,5 +1,5 @@
 """
-Permit (PTW) registry — receives permits flushed from the field app's offline
+Permit (PTW) registry - receives permits flushed from the field app's offline
 outgoing_queue.
 
 Production swap point is the ``permits`` table (migration 008). Phase-1 ships a

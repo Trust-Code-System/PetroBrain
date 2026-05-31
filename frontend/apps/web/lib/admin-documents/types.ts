@@ -1,7 +1,7 @@
 /**
  * Wire types for /admin/documents (A5).
  *
- * ``AdminDocumentRow`` matches the JSON the FastAPI route emits — fields
+ * ``AdminDocumentRow`` matches the JSON the FastAPI route emits - fields
  * use snake_case so the OpenAPI client and these manual types agree once
  * ``pnpm gen:api`` runs.
  */

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <radialGradient id="b" cx="40%" cy="32%" r="78%">
+      <stop offset="0%" stop-color="#ffe2bf"/>
+      <stop offset="18%" stop-color="#ffbf80"/>
+      <stop offset="42%" stop-color="#f97316"/>
+      <stop offset="72%" stop-color="#c2410c"/>
+      <stop offset="100%" stop-color="#7c2d12"/>
+    </radialGradient>
+    <radialGradient id="r" cx="50%" cy="55%" r="55%">
+      <stop offset="60%" stop-color="#f97316" stop-opacity="0"/>
+      <stop offset="86%" stop-color="#7c2d12" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#431407" stop-opacity="0.85"/>
+    </radialGradient>
+    <linearGradient id="s" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="c">
+      <path d="M32 4 C32 4 11 27 11 41.5 a21 21 0 1 0 42 0 C53 27 32 4 32 4 Z"/>
+    </clipPath>
+  </defs>
+  <path d="M32 4 C32 4 11 27 11 41.5 a21 21 0 1 0 42 0 C53 27 32 4 32 4 Z" fill="url(#b)"/>
+  <g clip-path="url(#c)">
+    <path d="M32 4 C32 4 11 27 11 41.5 a21 21 0 1 0 42 0 C53 27 32 4 32 4 Z" fill="url(#r)"/>
+    <path d="M24 12 C18 22 14.5 31 14.5 39 C14.5 43.5 16.5 46.5 19.5 47.5 C18.5 41 21 31.5 27 21 C28.5 18 26 11 24 12 Z" fill="url(#s)" opacity="0.9"/>
+    <ellipse cx="22.5" cy="22" rx="2.2" ry="3.6" fill="#ffffff" opacity="0.95" transform="rotate(-22 22.5 22)"/>
+    <ellipse cx="42" cy="50" rx="4.2" ry="2.4" fill="#ffffff" opacity="0.45" transform="rotate(-18 42 50)"/>
+  </g>
+</svg>

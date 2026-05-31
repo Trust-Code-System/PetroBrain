@@ -3,7 +3,7 @@
 # Runs the ENTIRE platform inside the customer boundary: API + worker + Postgres
 # (pgvector) + Redis + MinIO + a self-hosted vLLM model server. PB_LLM_PROVIDER
 # is self_hosted, so no outbound calls to any public LLM API. The app images are
-# built from requirements-tierb.txt (no anthropic/openai SDKs) — see
+# built from requirements-tierb.txt (no anthropic/openai SDKs) - see
 # infra/tier-b/check_no_cloud_sdks.py and infra/SECURITY.md.
 #
 # Bring up:   docker compose -f docker-compose-prod.yml up -d --build

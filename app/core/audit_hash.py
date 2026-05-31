@@ -5,7 +5,7 @@ Raw user text and raw model output MUST NOT land in the audit store; we
 record only the fingerprints. ``sha256_canonical`` produces a stable hex
 digest for any JSON-serializable value: dicts are sorted by key, dates and
 datetimes are isoformatted, and dataclasses fall through to their dict
-representation — the same encoding scheme used in ghgemp_template.py.
+representation - the same encoding scheme used in ghgemp_template.py.
 """
 from __future__ import annotations
 

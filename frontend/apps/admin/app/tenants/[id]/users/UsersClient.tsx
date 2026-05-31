@@ -108,7 +108,7 @@ function UsersView({
 
   return (
     <AdminShell
-      title={`Users — ${tenantId}`}
+      title={`Users - ${tenantId}`}
       subtitle="Invite, set role, activate, deactivate. Audited via /admin/audit."
     >
       <Card title="Invite user" description="POST /admin/tenants/{id}/users">
@@ -159,7 +159,7 @@ function UsersView({
 
       <Card>
         <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-600">
-          Users — {query.data?.length ?? 0}
+          Users - {query.data?.length ?? 0}
         </h2>
         {query.isLoading ? (
           <p className="mt-3 text-sm text-neutral-500">Loading…</p>
@@ -180,21 +180,18 @@ function UsersView({
                   <tr key={user.id} data-testid={`user-${user.id}`}>
                     <td className="px-3 py-2 text-neutral-800">{user.email}</td>
                     <td className="px-3 py-2">
-                      <select
-                        aria-label={`Role for ${user.email}`}
-                        value={user.role}
-                        onChange={(e) =>
-                          role.mutate({ user, role: e.target.value as UserRole })
-                        }
-                        disabled={role.isPending}
-                        className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm"
-                      >
-                        {USER_ROLES.map((r) => (
-                          <option key={r} value={r}>
-                            {r}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="w-36">
+                        <Select
+                          label=""
+                          aria-label={`Role for ${user.email}`}
+                          value={user.role}
+                          onChange={(e) =>
+                            role.mutate({ user, role: e.target.value as UserRole })
+                          }
+                          disabled={role.isPending}
+                          options={ROLE_OPTIONS}
+                        />
+                      </div>
                     </td>
                     <td className="px-3 py-2">
                       <Badge tone={statusTone(user.status)}>{user.status}</Badge>

@@ -3,7 +3,10 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { Badge } from '@petrobrain/ui';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+
+import { BackLink, Badge } from '@petrobrain/ui';
 
 import { fetchAssets } from '@/lib/chat/assets';
 import { useChatStore } from '@/lib/chat/store';
@@ -21,6 +24,18 @@ import { DocumentsTable } from './DocumentsTable';
 import { PendingUploadCard } from './PendingUploadCard';
 
 const DOCUMENTS_QUERY_KEY = ['admin', 'documents'] as const;
+
+function BackHeader() {
+  const from = useSearchParams()?.get('from');
+  const backToChat = from === 'chat';
+  const href = backToChat ? '/chat' : '/';
+  const label = backToChat ? 'Back to chat' : 'Back to home';
+  return (
+    <Link href={href} legacyBehavior passHref>
+      <BackLink label={label} />
+    </Link>
+  );
+}
 
 let pendingCounter = 0;
 
@@ -108,9 +123,12 @@ export function DocumentsScreen() {
 
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-6 p-6">
+      <BackHeader />
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold text-neutral-800">Documents</h1>
-        <p className="text-sm text-neutral-500">
+        <h1 className="bg-gradient-to-br from-neutral-900 to-neutral-600 bg-clip-text text-2xl font-semibold tracking-tight text-transparent dark:from-neutral-100 dark:to-neutral-400">
+          Documents
+        </h1>
+        <p className="text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
           Upload SOPs and standards. The worker extracts text, chunks, embeds, and indexes them so the
           chat surface can cite them with document + revision + clause.
         </p>
@@ -123,8 +141,8 @@ export function DocumentsScreen() {
 
       {pending.length > 0 ? (
         <section className="space-y-3" aria-label="Pending uploads">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-600">
-            Pending — {pending.length}
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
+            Pending - {pending.length}
           </h2>
           {pending.map((p) => (
             <PendingUploadCard
@@ -147,8 +165,8 @@ export function DocumentsScreen() {
 
       <section className="space-y-3" aria-label="Documents">
         <header className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-600">
-            Documents — {filteredRows.length}
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
+            Documents - {filteredRows.length}
           </h2>
           {documentsQuery.isFetching ? <Badge tone="info">refreshing…</Badge> : null}
           {shouldKeepPolling(documentsQuery.data ?? []) === POLL_INTERVAL_MS ? (

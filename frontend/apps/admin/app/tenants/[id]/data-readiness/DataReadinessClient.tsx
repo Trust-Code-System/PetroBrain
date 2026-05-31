@@ -54,8 +54,8 @@ function DataReadinessView({
 
   return (
     <AdminShell
-      title={`Data readiness — ${tenantId}`}
-      subtitle="All numbers come from /admin/data-readiness — derived server-side from the existing stores."
+      title={`Data readiness - ${tenantId}`}
+      subtitle="All numbers come from /admin/data-readiness - derived server-side from the existing stores."
     >
       {query.isError ? (
         <Banner tone="danger" title="Could not load readiness">

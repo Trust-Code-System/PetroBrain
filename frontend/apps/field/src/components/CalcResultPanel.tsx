@@ -20,7 +20,7 @@ export interface CalcResultPanelProps {
  *
  * Always shows: formula, headline number, input chips with units,
  * step-by-step working from the backend, and any notes. The
- * verification banner appears when ``safety_critical`` is true — the
+ * verification banner appears when ``safety_critical`` is true - the
  * field UI must never compute a safety-critical number without it.
  */
 export function CalcResultPanel({ result, submittedUnits, theme, textSize }: CalcResultPanelProps) {

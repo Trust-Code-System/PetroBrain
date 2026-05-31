@@ -3,7 +3,10 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { Button } from '@petrobrain/ui';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+
+import { BackLink, Button } from '@petrobrain/ui';
 
 import { useChatStore } from '@/lib/chat/store';
 import { createInventory, getInventory, listInventories } from '@/lib/emissions/api';
@@ -20,6 +23,19 @@ import { InventoryViewer } from './InventoryViewer';
 
 const HISTORY_QUERY_KEY = ['emissions', 'history'] as const;
 const inventoryQueryKey = (id: string) => ['emissions', 'inventory', id] as const;
+
+function BackHeader() {
+  const from = useSearchParams()?.get('from');
+  // Came from chat → go back to chat. Otherwise (home, deep link, refresh) → home.
+  const backToChat = from === 'chat';
+  const href = backToChat ? '/chat' : '/';
+  const label = backToChat ? 'Back to chat' : 'Back to home';
+  return (
+    <Link href={href} legacyBehavior passHref>
+      <BackLink label={label} />
+    </Link>
+  );
+}
 
 export function EmissionsScreen() {
   const token = useChatStore((s) => s.token)!;
@@ -87,12 +103,15 @@ export function EmissionsScreen() {
 
   return (
     <main className="mx-auto flex max-w-6xl flex-col gap-6 p-6">
+      <BackHeader />
       <header className="flex items-start justify-between">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold text-neutral-800">Emissions / MRV</h1>
-          <p className="text-sm text-neutral-500">
+          <h1 className="bg-gradient-to-br from-neutral-900 to-neutral-600 bg-clip-text text-2xl font-semibold tracking-tight text-transparent dark:from-neutral-100 dark:to-neutral-400">
+            Emissions / MRV
+          </h1>
+          <p className="text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
             NUPRC Tier-3 inventories and GHGEMP report generation. Numbers come from the inventory
-            engine — confirm GWP set and factors against current NUPRC guidance before filing.
+            engine - confirm GWP set and factors against current NUPRC guidance before filing.
           </p>
         </div>
         <Button
@@ -118,8 +137,8 @@ export function EmissionsScreen() {
 
       <section className="space-y-2" aria-label="Inventory history">
         <header>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-600">
-            Inventories — {filteredRows.length}
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
+            Inventories - {filteredRows.length}
           </h2>
         </header>
         <InventoryHistory
@@ -134,9 +153,9 @@ export function EmissionsScreen() {
       {selectedId ? (
         <section className="space-y-2" aria-label="Selected inventory">
           {detailQuery.isLoading ? (
-            <p className="text-sm text-neutral-500">Loading inventory…</p>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">Loading inventory…</p>
           ) : detailQuery.isError ? (
-            <p role="alert" className="rounded-md border border-danger-border bg-danger-bg p-3 text-sm text-danger-fg">
+            <p role="alert" className="rounded-md border border-danger-border bg-danger-bg p-3 text-sm text-danger-fg dark:border-danger-border/40 dark:bg-danger-fg/20 dark:text-danger-bg">
               Could not load inventory detail.
             </p>
           ) : viewerResponse ? (

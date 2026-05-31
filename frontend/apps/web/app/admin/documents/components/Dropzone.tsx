@@ -38,10 +38,10 @@ export function Dropzone({ onFilesDropped, disabled }: DropzoneProps) {
           'flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 text-center transition-colors',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
           isDragReject
-            ? 'border-danger-border bg-danger-bg text-danger-fg'
+            ? 'border-danger-border bg-danger-bg text-danger-fg dark:border-danger-border/40 dark:bg-danger-fg/20 dark:text-danger-bg'
             : isDragActive
-              ? 'border-primary-500 bg-primary-50 text-primary-700'
-              : 'border-neutral-300 bg-neutral-50 text-neutral-600',
+              ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-500 dark:bg-primary-900/30 dark:text-primary-200'
+              : 'border-neutral-300 bg-neutral-50 text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-300',
           disabled && 'cursor-not-allowed opacity-60',
         ),
       })}
@@ -52,7 +52,7 @@ export function Dropzone({ onFilesDropped, disabled }: DropzoneProps) {
           ? 'Drop the files to start composing the upload metadata.'
           : 'Drop documents here, or click to browse.'}
       </p>
-      <p className="text-xs text-neutral-500">
+      <p className="text-xs text-neutral-500 dark:text-neutral-400">
         Accepted: .txt · .md · .markdown · .pdf · .docx. Each file gets its own metadata form.
       </p>
     </div>

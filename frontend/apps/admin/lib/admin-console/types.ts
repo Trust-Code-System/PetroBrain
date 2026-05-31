@@ -1,7 +1,7 @@
 /**
  * Wire types for the admin console (B8). Mirror the FastAPI schemas in
  * ``app/api/routes_admin_tenants.py``, ``routes_admin_users.py``, and
- * ``routes_admin_data_readiness.py``. Pure TS — Vitest-friendly.
+ * ``routes_admin_data_readiness.py``. Pure TS - Vitest-friendly.
  */
 export type TenantStatus = 'active' | 'suspended';
 

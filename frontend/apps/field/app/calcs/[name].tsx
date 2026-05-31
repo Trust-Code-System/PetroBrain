@@ -23,7 +23,7 @@ import { scaleFontSize, type FieldTheme } from '../../src/theme/index';
 import type { TextSize } from '../../src/lib/settings/preferences';
 
 /**
- * /calcs/[name] — per-calc form generated from the catalog entry.
+ * /calcs/[name] - per-calc form generated from the catalog entry.
  *
  * Input grid is rendered from the catalog's input specs: each field
  * gets a numeric input + a unit selector for its accepted units. The
@@ -118,7 +118,7 @@ export default function CalcDetailScreen() {
 
       {!network.online ? (
         <Banner tone="warn" title="Offline" theme={theme} textSize={textSize}>
-          Running a calc needs the network — every number comes from the backend. You can still
+          Running a calc needs the network - every number comes from the backend. You can still
           view past results on the Recent tab.
         </Banner>
       ) : null}

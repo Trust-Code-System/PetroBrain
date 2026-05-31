@@ -89,6 +89,14 @@ class Settings(BaseSettings):
     jwt_public_key: str = ""                     # RS256 production/SSO public key
     jwt_issuer: str = "petrobrain"
     jwt_audience: str = "petrobrain-api"
+    jwt_ttl_hours: int = 12
+    # Self-serve signup (POST /auth/signup). Disable to lock the app to
+    # admin-invited accounts only.
+    enable_self_signup: bool = True
+    default_signup_tenant_id: str = "demo"
+    default_signup_tenant_name: str = "Demo tenant"
+    default_signup_role: str = "engineer"
+    password_min_length: int = 8
 
     # RAG
     embedding_model: str = "text-embedding-3-large"
@@ -105,6 +113,10 @@ class Settings(BaseSettings):
     # Safety / tiering
     operational_tier: bool = False            # True => Tier B (on-prem, OT DMZ, read-only)
     sovereign_region: str = "af-south-1"
+
+    # Web search (Tavily). Leave empty to disable; the tool stays registered and
+    # returns a structured disabled-payload so the model can decline gracefully.
+    tavily_api_key: str = ""
 
 
 @lru_cache

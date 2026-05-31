@@ -30,7 +30,7 @@ function drive(events: StreamEvent[]): MessageType {
   return messages[0]!;
 }
 
-describe('Message — kill-sheet stream', () => {
+describe('Message - kill-sheet stream', () => {
   const killSheetResult = {
     method: 'wait_and_weight',
     banner: 'DECISION SUPPORT ONLY. Verify with the competent person before action.',
@@ -94,10 +94,10 @@ describe('Message — kill-sheet stream', () => {
     const stepsList = within(details as HTMLElement).getByRole('list');
     expect(within(stepsList).getByText(/KMW = OMW \+ SIDPP/)).toBeInTheDocument();
 
-    // Citation chip is inline (not behind a click).
-    expect(
-      screen.getByRole('button', { name: /Citation: Kick SOP · Rev 1 · §2\.1/ }),
-    ).toBeInTheDocument();
+    // Citation pill is inline in the compact Sources footer (renders as a
+    // span - non-url SOP citations don't link out).
+    const sources = screen.getByRole('region', { name: /Sources/i });
+    expect(within(sources).getByText(/Kick SOP/)).toBeInTheDocument();
 
     // Streamed answer text is visible.
     expect(
@@ -130,7 +130,7 @@ describe('Message — kill-sheet stream', () => {
   });
 });
 
-describe('Message — user prompt', () => {
+describe('Message - user prompt', () => {
   it('renders the user prompt with module + asset chips', () => {
     const message: MessageType = {
       id: 'u1',

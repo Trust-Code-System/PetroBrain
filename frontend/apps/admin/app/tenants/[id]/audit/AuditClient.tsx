@@ -80,7 +80,7 @@ function AuditView({
 
   return (
     <AdminShell
-      title={`Audit log — ${tenantId}`}
+      title={`Audit log - ${tenantId}`}
       subtitle="Hash-only audit_events. No raw user text or model output leaves the audit store."
     >
       <Card title="Filters">
@@ -143,7 +143,7 @@ function AuditView({
 
       <Card>
         <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-600">
-          Events — {query.data?.count ?? 0}
+          Events - {query.data?.count ?? 0}
         </h2>
         {query.isLoading ? (
           <p className="mt-3 text-sm text-neutral-500">Loading…</p>
@@ -175,7 +175,7 @@ function AuditView({
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap gap-1">
                         {event.flags.length === 0 ? (
-                          <span className="text-xs text-neutral-400">—</span>
+                          <span className="text-xs text-neutral-400">-</span>
                         ) : (
                           event.flags.map((flag) => (
                             <Badge key={flag} tone="warn">

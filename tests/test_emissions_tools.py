@@ -114,6 +114,7 @@ def test_emissions_tools_registered_for_module():
         "fugitive_tier3",
         "combustion_emissions",
         "build_ghgemp_report",
+        "web_search",
     }
 
     assert set(MODULE_TOOLS["emissions_mrv"]) == expected

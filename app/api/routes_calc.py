@@ -93,7 +93,7 @@ async def run_calc(req: CalcRequest, who: Principal = Depends(get_principal)):
             "safety_critical": result.safety_critical,
         },
     ))
-    # Production-shape audit_events row (hash only — keeps PII out of the
+    # Production-shape audit_events row (hash only - keeps PII out of the
     # audit store; same contract as the chat/tool path).
     get_audit_events_repository().append(
         tenant_id=who.tenant_id,

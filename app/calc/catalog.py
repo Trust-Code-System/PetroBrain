@@ -9,7 +9,7 @@ Single source of truth for:
     server-side via ``conversions.to_canonical``).
 
 The field app fetches the catalog at ``GET /calc/catalog`` and builds
-its forms from it — so we don't carry two copies of the schema.
+its forms from it - so we don't carry two copies of the schema.
 """
 from __future__ import annotations
 
@@ -122,7 +122,7 @@ _PRODUCTION: dict[str, tuple[CalcSpec, Callable[..., CalcResult]]] = {
             name="vogel_ipr",
             family="production",
             label="Vogel IPR",
-            summary="Vogel inflow performance — solves for AOFP from a single test point.",
+            summary="Vogel inflow performance - solves for AOFP from a single test point.",
             inputs=(
                 InputSpec("q_test_stbd", "Test rate", "stbd", ("stbd",), 1000),
                 InputSpec("pwf_test_psi", "Test flowing pressure", "psi", ("psi", "bar"), 1500),
@@ -149,7 +149,7 @@ _PRODUCTION: dict[str, tuple[CalcSpec, Callable[..., CalcResult]]] = {
         CalcSpec(
             name="arps_exponential_cum",
             family="production",
-            label="Arps exponential — cumulative",
+            label="Arps exponential - cumulative",
             summary="Np = (qi - q(t)) / D.",
             inputs=(
                 InputSpec("qi_stbd", "Initial rate", "stbd", ("stbd",), 1000),

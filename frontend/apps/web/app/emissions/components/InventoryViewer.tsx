@@ -10,10 +10,10 @@ export function InventoryViewer({ response }: { response: InventoryResponse }) {
       <KpiCards response={response} />
       <section className="space-y-2" aria-label="Sources">
         <header className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-600">
-            Sources — {response.inventory.lines.length}
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
+            Sources - {response.inventory.lines.length}
           </h2>
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">
             Tier 3 rows tinted green, Tier 2 amber, Tier 1 red.
           </p>
         </header>

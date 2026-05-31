@@ -5,7 +5,7 @@ Shared by the Postgres repository variants. Connection-per-call mirrors the
 stateless LocalJson repos; a pool is a later optimization (see the persistence
 roadmap). Tenant isolation is enforced two ways, defence in depth:
 
-  1. every query filters on ``tenant_id`` explicitly — correct regardless of the
+  1. every query filters on ``tenant_id`` explicitly - correct regardless of the
      connecting DB role; and
   2. each connection sets the ``petrobrain.tenant_id`` GUC so the Row-Level
      Security policies in ``app/db/migrations`` are the backstop.

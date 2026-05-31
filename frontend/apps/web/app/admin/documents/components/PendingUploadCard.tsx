@@ -106,7 +106,7 @@ export function PendingUploadCard({
           disabled={pending.submitting}
         />
         {pending.error ? (
-          <p role="alert" className="text-sm text-danger-fg">
+          <p role="alert" className="text-sm text-danger-fg dark:text-danger-bg">
             {pending.error}
           </p>
         ) : null}

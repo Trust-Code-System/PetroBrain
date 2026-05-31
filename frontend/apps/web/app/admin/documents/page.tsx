@@ -3,7 +3,7 @@ import { Providers } from '@/lib/chat/Providers';
 import { AdminDocumentsClient } from './AdminDocumentsClient';
 
 /**
- * /admin/documents — SSR shell.
+ * /admin/documents - SSR shell.
  *
  * Auth + role decisions happen in the client so the same QueryClient
  * lifecycle covers polling and mutations. The server frame is a pure

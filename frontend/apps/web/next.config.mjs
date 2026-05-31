@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Transpile the workspace TS packages directly — they ship .ts at runtime.
+  // Transpile the workspace TS packages directly - they ship .ts at runtime.
   transpilePackages: ['@petrobrain/ui', '@petrobrain/api', '@petrobrain/types'],
   experimental: {
     typedRoutes: true,

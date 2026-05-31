@@ -3,7 +3,7 @@ Production-shape audit events store (A6).
 
 Schema mirrors ``app/db/migrations/002_audit_events.sql`` exactly so the
 Postgres swap is a backend change, not a model change. The Phase-1 backend
-is JSONL — append-only writes, in-app tenant filtering on read. The Postgres
+is JSONL - append-only writes, in-app tenant filtering on read. The Postgres
 backend (deferred) enforces the same tenant scoping at the DB layer via RLS.
 
 Raw user text and raw model output MUST NEVER pass through this module.

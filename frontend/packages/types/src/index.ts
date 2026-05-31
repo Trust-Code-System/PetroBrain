@@ -4,9 +4,9 @@
  * The authoritative wire schemas live in the FastAPI app at
  * ``app/models/schemas.py`` and are exposed via OpenAPI. ``@petrobrain/api``
  * generates strongly-typed wire types from that schema; this package holds
- * the domain types the UI cares about — Principal claims decoded from the
+ * the domain types the UI cares about - Principal claims decoded from the
  * JWT, citation shape, confidence labels, tool-result shapes used by the
- * chat UI — i.e. things the OpenAPI client can't express directly.
+ * chat UI - i.e. things the OpenAPI client can't express directly.
  */
 
 export type Role = 'admin' | 'engineer' | 'field' | 'hse';
@@ -24,6 +24,12 @@ export interface Citation {
   title: string | null;
   revision: string | null;
   clause: string | null;
+  /**
+   * Source URL for web-sourced citations (Tavily). Absent / null for citations
+   * pulled from the tenant's RAG corpus (those reference document + clause
+   * inside the system instead of an external page).
+   */
+  url?: string | null;
 }
 
 export interface ToolResult<TInput = unknown, TOutput = unknown> {

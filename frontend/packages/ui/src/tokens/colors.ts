@@ -1,5 +1,5 @@
 /**
- * Design tokens — colors.
+ * Design tokens - colors.
  *
  * Boring and professional. All foreground / background pairs used by the
  * primitives clear WCAG 2.1 AA contrast (4.5:1 for text, 3:1 for large
@@ -10,7 +10,7 @@
  *   warn   – caution; user must verify (e.g. Tier-2 source on an inventory).
  *   danger – decision-support refusal, validation error, live-event banner.
  *
- * Primary is a professional orange — warm and confident on white, readable in
+ * Primary is a professional orange - warm and confident on white, readable in
  * sunlight. Text-weight shades (600/700+) clear AA contrast on white. The
  * neutral scale is engineered for office (light) and field (dark,
  * high-contrast) themes alike.

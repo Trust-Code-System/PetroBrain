@@ -6,7 +6,7 @@ Fails (exit 1) if the on-prem / OT-DMZ build could reach a public LLM SDK:
 
   1. requirements-tierb.txt must NOT pin `anthropic` or `openai`.
   2. No MODULE-LEVEL (column-0) import of `openai`/`anthropic` anywhere under
-     app/ — those would execute on import even when PB_LLM_PROVIDER=self_hosted
+     app/ - those would execute on import even when PB_LLM_PROVIDER=self_hosted
      and crash a Tier-B image that doesn't ship the SDKs. Lazy imports (indented,
      inside the Tier-A code paths) are allowed: they never run in Tier B.
 

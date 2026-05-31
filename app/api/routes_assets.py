@@ -2,13 +2,13 @@
 Asset hierarchy + relationships API (A9).
 
 GET    /assets?root_id=&parent_id=&type=    list (roots or children)
-POST   /assets                              create — admin or engineer
-PATCH  /assets/{id}                         update — admin or engineer
+POST   /assets                              create - admin or engineer
+PATCH  /assets/{id}                         update - admin or engineer
 GET    /assets/{id}                         single asset
 GET    /assets/{id}/path                    path Field→...→Asset for the asset_context
 GET    /assets/{id}/descendants             flat list of all descendants
 GET    /assets/{id}/relationships           edges where src/dst == id
-POST   /assets/{id}/relationships           create an edge — admin or engineer
+POST   /assets/{id}/relationships           create an edge - admin or engineer
 
 All routes are tenant-scoped and refuse cross-tenant ids; the Postgres
 backend adds RLS as defence in depth.

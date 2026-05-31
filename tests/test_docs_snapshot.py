@@ -1,4 +1,4 @@
-"""GET /docs/snapshot — tenant-scoped incremental SOP snapshot for the field
+"""GET /docs/snapshot - tenant-scoped incremental SOP snapshot for the field
 offline cache (full docs with chunks, `since` filtering)."""
 import os
 import sys

@@ -4,9 +4,9 @@ User management (B8).
 Lives under ``/admin/tenants/{tenant_id}/users`` so cross-tenant routing
 is explicit. Authorisation:
 
-  * platform_admin     — any tenant (any flow)
-  * tenant admin       — only their own tenant
-  * everyone else      — 403
+  * platform_admin     - any tenant (any flow)
+  * tenant admin       - only their own tenant
+  * everyone else      - 403
 
 Status flows:
   invited → active     (POST .../{user_id}/activate)

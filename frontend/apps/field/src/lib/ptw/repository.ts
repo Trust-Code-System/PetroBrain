@@ -4,7 +4,7 @@
  * Save / list / get / sign / queue-for-sync. Every row is tenant-scoped;
  * sign-offs append to the JSON ``signatures`` column with a timestamp.
  *
- * Sync to backend is a placeholder — see ``app/(tabs)/logs.tsx`` for the
+ * Sync to backend is a placeholder - see ``app/(tabs)/logs.tsx`` for the
  * queue surface and ``src/lib/cache/sync.ts`` for the TODO contract.
  */
 import { getDb } from '../cache/database.js';

@@ -8,7 +8,7 @@ local_json test run is unaffected.
 
 ``PB_TEST_DATABASE_URL`` is an ADMIN/superuser DSN used for setup (migrations,
 role creation, truncation). The repository under test connects as a dedicated
-NOSUPERUSER role so the RLS policies are actually exercised — superusers bypass
+NOSUPERUSER role so the RLS policies are actually exercised - superusers bypass
 RLS even under FORCE ROW LEVEL SECURITY.
 """
 import os

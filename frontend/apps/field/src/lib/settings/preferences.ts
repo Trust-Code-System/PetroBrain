@@ -1,5 +1,5 @@
 /**
- * User preferences (pure TS — no RN imports, so the reducer is testable
+ * User preferences (pure TS - no RN imports, so the reducer is testable
  * under Vitest without a JS engine that knows about react-native).
  *
  * Persistence happens in a separate ``preferences.store.ts`` (later)

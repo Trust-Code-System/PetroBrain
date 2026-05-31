@@ -1,4 +1,4 @@
-"""POST/GET /admin/permits — field permit flush (idempotent), tenant-scoped,
+"""POST/GET /admin/permits - field permit flush (idempotent), tenant-scoped,
 admin-only read."""
 import os
 import sys

@@ -2,8 +2,8 @@
 Postgres backend integration tests for the tenants repository (Tier 2, 004).
 
 Runs only when ``PB_TEST_DATABASE_URL`` points at a reachable Postgres; skipped
-otherwise. The tenants table is the platform registry — its RLS is keyed on the
-row ``id`` with a ``'*'`` platform-admin bypass — so the repo connects with the
+otherwise. The tenants table is the platform registry - its RLS is keyed on the
+row ``id`` with a ``'*'`` platform-admin bypass - so the repo connects with the
 GUC set to ``'*'``. A dedicated test proves the self-visibility policy directly.
 """
 import os
@@ -118,7 +118,7 @@ def test_update_rejects_bad_status_and_empty_name(repo):
 
 def test_rls_self_visibility_and_platform_bypass(repo, app_dsn):
     """The RLS policy lets a tenant see only its own row (GUC = its id) while
-    the '*' GUC sees all rows — the platform-admin bypass the repo relies on."""
+    the '*' GUC sees all rows - the platform-admin bypass the repo relies on."""
     import psycopg
 
     from app.db import pg

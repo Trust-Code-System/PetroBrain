@@ -14,7 +14,7 @@ import { useFieldTheme } from '../../../src/lib/session/useColorMode';
 import { scaleFontSize } from '../../../src/theme/index';
 
 /**
- * /calcs/recent/[id] — replay a saved calc result offline.
+ * /calcs/recent/[id] - replay a saved calc result offline.
  */
 export default function RecentCalcScreen() {
   const params = useLocalSearchParams<{ id: string }>();

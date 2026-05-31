@@ -47,7 +47,7 @@ def _run_sync(coro) -> Any:
         loop = asyncio.new_event_loop()
         try:
             box["value"] = loop.run_until_complete(coro)
-        except BaseException as exc:  # noqa: BLE001 — re-raised on the caller thread
+        except BaseException as exc:  # noqa: BLE001 - re-raised on the caller thread
             box["error"] = exc
         finally:
             loop.close()
@@ -72,7 +72,7 @@ async def _run(*, tenant_id: str, ingest_id: str) -> dict[str, Any]:
         text = extract_text(raw, record["filename"])
         if not text.strip():
             raise ValueError("extracted document text is empty")
-    except Exception as exc:  # noqa: BLE001 — surface the reason on the record
+    except Exception as exc:  # noqa: BLE001 - surface the reason on the record
         repo.update_status(
             tenant_id=tenant_id,
             ingest_id=ingest_id,

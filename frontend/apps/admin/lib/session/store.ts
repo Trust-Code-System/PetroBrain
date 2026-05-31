@@ -11,7 +11,7 @@ interface AdminSessionState {
 }
 
 /**
- * Admin console session: token in sessionStorage (never localStorage —
+ * Admin console session: token in sessionStorage (never localStorage -
  * tabs that close shouldn't leak the platform-admin token).
  */
 export const useAdminSession = create<AdminSessionState>()(

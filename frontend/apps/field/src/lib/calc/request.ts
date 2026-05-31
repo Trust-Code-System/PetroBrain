@@ -2,7 +2,7 @@
  * Form-input → POST /calc request shape (pure TS).
  *
  * Each input on the field form is a ``{value: string, unit: string}``
- * pair — strings because <TextInput> always hands them over as text. We
+ * pair - strings because <TextInput> always hands them over as text. We
  * coerce to number, surface per-field parse errors, and refuse to
  * submit when anything is missing or NaN. All conversion still happens
  * server-side; the field never computes a result.

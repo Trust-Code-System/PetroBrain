@@ -1,10 +1,13 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { Citation, ToolResult } from '@petrobrain/types';
 
 import { useChatStore } from '@/lib/chat/store';
+import { ownerKeyOf, useConversationsStore } from '@/lib/chat/conversations';
+import { useProjectsStore } from '@/lib/chat/projects';
+import { useSettingsStore } from '@/lib/chat/settings';
 import { streamChat, type StreamEvent } from '@/lib/chat/streamChat';
 
 import { AuthGate } from './components/AuthGate';
@@ -12,7 +15,8 @@ import { ChatComposer } from './components/ChatComposer';
 import { ChatSidebar } from './components/ChatSidebar';
 import { EmptyState } from './components/EmptyState';
 import { MessageList } from './components/MessageList';
-import type { AssistantMessage, Message } from '@/lib/chat/types';
+import { ModulePill } from './components/ModulePill';
+import type { AssistantMessage, Message, MessageAttachment } from '@/lib/chat/types';
 
 let messageCounter = 0;
 function nextId(prefix: string): string {
@@ -26,23 +30,99 @@ export function ChatClient() {
   const module = useChatStore((s) => s.module);
   const assetContext = useChatStore((s) => s.assetContext);
   const apiBaseUrl = useChatStore((s) => s.apiBaseUrl);
+  const hasHydrated = useChatStore((s) => s.hasHydrated);
 
-  const [messages, setMessages] = useState<Message[]>([]);
+  const ownerKey = useMemo(() => ownerKeyOf(principal), [principal]);
+
+  const activeId = useConversationsStore((s) => s.activeId);
+  const conversations = useConversationsStore((s) => s.conversations);
+  const newConversation = useConversationsStore((s) => s.newConversation);
+  const setMessagesInStore = useConversationsStore((s) => s.setMessages);
+  const setTitleFromFirstMessage = useConversationsStore((s) => s.setTitleFromFirstMessage);
+
+  const activeProjectId = useProjectsStore((s) => s.activeId);
+  const projects = useProjectsStore((s) => s.projects);
+  const selectProject = useProjectsStore((s) => s.selectProject);
+  const customInstructions = useSettingsStore((s) => s.customInstructions);
+  const defaultModule = useSettingsStore((s) => s.defaultModule);
+  const settingsHydrated = useSettingsStore((s) => s.hasHydrated);
+  const setModule = useChatStore((s) => s.setModule);
+
+  // When settings finish hydrating and the user is on a fresh chat (no
+  // conversation yet), apply their default module so the new chat starts
+  // in the right context.
+  useEffect(() => {
+    if (!settingsHydrated || activeId) return;
+    if (defaultModule && defaultModule !== module) {
+      setModule(defaultModule);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsHydrated, activeId]);
+  const activeProject = useMemo(() => {
+    if (!activeProjectId || !ownerKey) return null;
+    const p = projects[activeProjectId];
+    return p && p.ownerKey === ownerKey ? p : null;
+  }, [activeProjectId, projects, ownerKey]);
+
+  // Resolve the active conversation, scoped to the signed-in principal so
+  // someone else's chats on the same browser stay hidden.
+  const activeConversation = useMemo(() => {
+    if (!activeId || !ownerKey) return null;
+    const convo = conversations[activeId];
+    if (!convo || convo.ownerKey !== ownerKey) return null;
+    return convo;
+  }, [activeId, conversations, ownerKey]);
+
+  const messages: Message[] = activeConversation?.messages ?? [];
+
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // When the principal arrives but no chat is active, do nothing - the
+  // user lands on the empty state and we create a conversation on first
+  // send. This avoids spamming localStorage with empty "New chat" rows.
+
   const send = useCallback(
-    async (text: string) => {
-      if (!token || !principal || !text.trim() || sending) return;
+    async (text: string, attachments: MessageAttachment[] = []) => {
+      if (!token || !principal || !ownerKey || sending) return;
+      const trimmed = text.trim();
+      if (!trimmed && attachments.length === 0) return;
+
+      // Create the conversation lazily on the first send so empty threads
+      // never accumulate in the sidebar. New chats inherit the active
+      // project so the workspace's instructions apply automatically.
+      let convoId = activeId;
+      if (!convoId || conversations[convoId]?.ownerKey !== ownerKey) {
+        convoId = newConversation(ownerKey, activeProject?.id ?? null);
+      }
+
+      // Backend now receives attachments natively: images go up as base64
+      // vision content blocks, text-style files are inlined upstream, and
+      // documents become a model-visible note. We just send the raw text
+      // here - the orchestrator composes the multimodal user turn.
+      const wireAttachments = attachments.map((a) => ({
+        name: a.name,
+        kind: a.kind,
+        mime_type: a.mimeType,
+        // Strip the "data:image/...;base64," prefix; backend wants the
+        // raw base64 payload only.
+        data:
+          a.kind === 'image' && a.preview
+            ? a.preview.replace(/^data:[^;]+;base64,/, '')
+            : a.kind === 'text'
+              ? a.preview
+              : null,
+      }));
 
       const userMsg: Message = {
         id: nextId('u'),
         role: 'user',
-        text,
+        text: trimmed,
         module,
         assetContext,
         createdAt: Date.now(),
+        ...(attachments.length > 0 ? { attachments } : {}),
       };
       const assistantId = nextId('a');
       const assistantMsg: AssistantMessage = {
@@ -55,73 +135,310 @@ export function ChatClient() {
         streaming: true,
         createdAt: Date.now(),
       };
-      setMessages((prev) => [...prev, userMsg, assistantMsg]);
+
+      const baseMessages = conversations[convoId]?.messages ?? [];
+      let workingMessages: Message[] = [...baseMessages, userMsg, assistantMsg];
+      setMessagesInStore(convoId, workingMessages, ownerKey);
+
+      // Title the conversation from the first user prompt.
+      if (baseMessages.length === 0) {
+        setTitleFromFirstMessage(convoId, trimmed || attachments[0]?.name || 'New chat');
+      }
+
       setError(null);
       setSending(true);
 
       const controller = new AbortController();
       abortRef.current = controller;
 
+      // On the first turn of a chat we attach standing context - the
+      // user's global custom instructions and any project-level
+      // instructions. We only do this once per conversation; after that
+      // the context lives in the message history and reattaching would
+      // balloon the prompt for no benefit.
+      const isFirstTurn = baseMessages.length === 0;
+      const userInstructions =
+        isFirstTurn && customInstructions.trim() ? customInstructions.trim() : '';
+      const projectInstructions =
+        isFirstTurn && activeProject?.instructions.trim()
+          ? activeProject.instructions.trim()
+          : '';
+      const prefixBlocks: string[] = [];
+      if (userInstructions) {
+        prefixBlocks.push(`<user_instructions>\n${userInstructions}\n</user_instructions>`);
+      }
+      if (projectInstructions) {
+        prefixBlocks.push(
+          `<project_instructions>\n${projectInstructions}\n</project_instructions>`,
+        );
+      }
+      const wireMessage = prefixBlocks.length > 0
+        ? `${prefixBlocks.join('\n\n')}\n\n${trimmed}`
+        : trimmed;
+
       try {
         await streamChat({
           baseUrl: apiBaseUrl,
           token,
           body: {
-            message: text,
+            message: wireMessage,
             module,
             asset_context: assetContext,
             user_role: principal.role,
+            ...(wireAttachments.length > 0 ? { attachments: wireAttachments } : {}),
           },
           signal: controller.signal,
           onEvent: (event) => {
-            setMessages((prev) => applyEvent(prev, assistantId, event));
+            workingMessages = applyEvent(workingMessages, assistantId, event);
+            setMessagesInStore(convoId!, workingMessages, ownerKey);
           },
         });
       } catch (e) {
-        const detail = e instanceof Error ? e.message : String(e);
-        setError(detail);
-        setMessages((prev) =>
-          prev.map((m) =>
+        const wasUserAbort =
+          e instanceof DOMException && e.name === 'AbortError';
+        if (wasUserAbort) {
+          // User clicked Stop. Keep whatever text streamed in, mark the
+          // assistant turn finished, and don't surface a red error banner -
+          // ChatGPT/Claude behave the same way.
+          workingMessages = workingMessages.map((m) =>
+            m.id === assistantId && m.role === 'assistant'
+              ? { ...m, streaming: false }
+              : m,
+          );
+          setMessagesInStore(convoId!, workingMessages, ownerKey);
+        } else {
+          const detail = e instanceof Error ? e.message : String(e);
+          setError(detail);
+          workingMessages = workingMessages.map((m) =>
             m.id === assistantId && m.role === 'assistant'
               ? { ...m, streaming: false, error: detail }
               : m,
-          ),
-        );
+          );
+          setMessagesInStore(convoId!, workingMessages, ownerKey);
+        }
       } finally {
         setSending(false);
         abortRef.current = null;
       }
     },
-    [apiBaseUrl, assetContext, module, principal, sending, token],
+    [
+      activeId,
+      activeProject,
+      apiBaseUrl,
+      assetContext,
+      conversations,
+      customInstructions,
+      module,
+      newConversation,
+      ownerKey,
+      principal,
+      sending,
+      setMessagesInStore,
+      setTitleFromFirstMessage,
+      token,
+    ],
   );
 
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
+  const regenerate = useCallback(
+    (assistantMessageId: string) => {
+      if (!ownerKey || sending) return;
+      const convoId = activeId;
+      if (!convoId) return;
+      const convo = conversations[convoId];
+      if (!convo || convo.ownerKey !== ownerKey) return;
+      const idx = convo.messages.findIndex((m) => m.id === assistantMessageId);
+      if (idx <= 0) return;
+      // The user turn just before this assistant turn is what we replay.
+      // Walk backwards in case there are interleaved assistant turns (there
+      // shouldn't be, but be defensive).
+      let userIdx = idx - 1;
+      while (userIdx >= 0 && convo.messages[userIdx]!.role !== 'user') {
+        userIdx -= 1;
+      }
+      if (userIdx < 0) return;
+      const userMsg = convo.messages[userIdx];
+      if (!userMsg || userMsg.role !== 'user') return;
+
+      // Drop the failed/old assistant turn (and anything after, just in case
+      // - the user already saw a finished answer, so trimming is safe), then
+      // re-send the same user text + attachments.
+      const trimmed = convo.messages.slice(0, idx);
+      setMessagesInStore(convoId, trimmed, ownerKey);
+      void send(userMsg.text, userMsg.attachments ?? []);
+    },
+    [activeId, conversations, ownerKey, send, sending, setMessagesInStore],
+  );
+
+  // Abort the in-flight stream when ChatClient unmounts so a closed-tab race
+  // doesn't leave a hanging fetch. We intentionally do NOT abort on activeId
+  // changes: the very first send in a fresh chat goes null -> new-id mid-send,
+  // and a cleanup that fires after the controller is stored would abort the
+  // freshly-started stream and surface as "signal is aborted without reason"
+  // on the first turn. Streams write to the convoId captured in send()'s
+  // closure, so switching conversations mid-flight already lands the answer
+  // in the right place without an explicit abort.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  // Stick-to-bottom scroll. Jumps the conversation pane to the latest
+  // message whenever a new message lands or tokens stream in - unless the
+  // user has scrolled up to read history, in which case we pause and let
+  // them stay where they are.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const pinnedToBottomRef = useRef(true);
+  const lastMessageCount = useRef(messages.length);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    pinnedToBottomRef.current = distanceFromBottom < 120;
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const grew = messages.length > lastMessageCount.current;
+    lastMessageCount.current = messages.length;
+    // A *new* message always pins back to the bottom (covers the "I just
+    // sent a question" case). While streaming, we follow only if the user
+    // is already near the bottom.
+    if (grew || pinnedToBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+      pinnedToBottomRef.current = true;
+    }
+  }, [messages]);
+
+  // Switching conversations resets the pin so the new thread lands at the
+  // bottom even if the previous one was scrolled up.
+  useEffect(() => {
+    pinnedToBottomRef.current = true;
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [activeId]);
+
+  // Wait for sessionStorage to rehydrate before deciding between the chat
+  // surface and the sign-in gate - otherwise a reload briefly flashes the
+  // AuthGate before the persisted token lands.
+  if (!hasHydrated) {
+    return (
+      <div
+        aria-busy="true"
+        aria-label="Loading PetroBrain"
+        className="grid min-h-screen place-items-center bg-gradient-to-b from-white via-white to-primary-50/30 dark:from-neutral-950 dark:via-neutral-950 dark:to-primary-900/20"
+      >
+        <div className="flex flex-col items-center gap-3">
+          <span className="relative inline-flex h-12 w-12">
+            <span className="absolute inset-0 rounded-full bg-primary-200/60 blur-xl dark:bg-primary-700/40" />
+            <span
+              aria-hidden
+              className="relative inline-block h-12 w-12 rounded-full border-2 border-primary-200 border-t-primary-500 animate-spin dark:border-primary-800"
+            />
+          </span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary-600 dark:text-primary-400">
+            PetroBrain
+          </span>
+        </div>
+      </div>
+    );
+  }
   if (!token || !principal) {
     return <AuthGate />;
   }
 
   return (
-    <div className="grid min-h-screen grid-cols-[18rem_minmax(0,1fr)] gap-0">
+    <div className="grid min-h-screen grid-cols-[15rem_minmax(0,1fr)] gap-0">
       <ChatSidebar />
-      <section className="flex h-screen flex-col bg-white">
-        <header className="border-b border-neutral-200 px-6 py-4">
-          <h1 className="text-lg font-semibold text-neutral-800">Chat</h1>
-          <p className="text-xs text-neutral-500">
-            Decision support. Verify safety-critical numbers with the competent person before acting.
-          </p>
+      <section className="relative flex h-screen flex-col overflow-hidden bg-gradient-to-b from-white via-white to-primary-50/20 dark:from-neutral-950 dark:via-neutral-950 dark:to-primary-900/10">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-32 right-[-10%] h-96 w-96 rounded-full bg-primary-200/30 blur-3xl dark:bg-primary-800/20"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -bottom-40 left-[-10%] h-96 w-96 rounded-full bg-primary-100/40 blur-3xl dark:bg-primary-900/20"
+        />
+
+        <header className="relative z-20 flex items-center justify-between gap-4 border-b border-neutral-200/60 bg-white/60 px-7 py-3 backdrop-blur-xl dark:border-neutral-800/60 dark:bg-neutral-900/60">
+          <div className="flex items-center gap-2">
+            <ModulePill />
+            {activeProject ? (
+              <span
+                className="inline-flex h-9 items-center gap-1.5 rounded-full border border-primary-200/70 bg-gradient-to-r from-primary-50 to-primary-100/70 pl-2 pr-1 text-xs font-semibold text-primary-800 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-primary-700/40 dark:from-primary-900/40 dark:to-primary-800/30 dark:text-primary-200"
+                title={activeProject.description || activeProject.name}
+              >
+                <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
+                  <path
+                    d="M3 6.5A1.5 1.5 0 014.5 5h3l1.5 2h6.5A1.5 1.5 0 0117 8.5v6A1.5 1.5 0 0115.5 16h-11A1.5 1.5 0 013 14.5v-8z"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span className="max-w-[14rem] truncate">{activeProject.name}</span>
+                <button
+                  type="button"
+                  onClick={() => selectProject(null)}
+                  aria-label="Exit project"
+                  title="Exit project"
+                  className="ml-0.5 flex h-6 w-6 items-center justify-center rounded-full text-primary-700/60 hover:bg-white/70 hover:text-primary-800 dark:text-primary-300/60 dark:hover:bg-neutral-900/60 dark:hover:text-primary-200"
+                >
+                  <svg width="10" height="10" viewBox="0 0 20 20" fill="none">
+                    <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </span>
+            ) : null}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => ownerKey && newConversation(ownerKey, activeProject?.id ?? null)}
+              disabled={!ownerKey}
+              className="group relative isolate inline-flex h-9 items-center gap-1.5 rounded-full bg-gradient-to-b from-neutral-900 to-neutral-800 px-3.5 text-sm font-semibold text-white shadow-[0_6px_14px_-6px_rgba(15,23,42,0.45),inset_0_1px_0_rgba(255,255,255,0.15)] transition-all hover:from-neutral-800 hover:to-neutral-700 hover:shadow-[0_10px_24px_-8px_rgba(15,23,42,0.45)] disabled:cursor-not-allowed disabled:opacity-50 dark:from-primary-700 dark:to-primary-800 dark:hover:from-primary-600 dark:hover:to-primary-700"
+            >
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
+                <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              New chat
+            </button>
+          </div>
         </header>
-        <div className="flex-1 overflow-y-auto">
+
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          className={`relative z-10 flex-1 ${
+            messages.length === 0 ? 'overflow-hidden' : 'overflow-y-auto'
+          }`}
+        >
           {messages.length === 0 ? (
-            <EmptyState onPrompt={send} />
+            <div className="flex h-full items-center justify-center">
+              <EmptyState onPrompt={send} />
+            </div>
           ) : (
-            <MessageList messages={messages} />
+            <MessageList messages={messages} onRegenerate={regenerate} />
           )}
         </div>
         {error ? (
-          <div className="border-t border-danger-border bg-danger-bg px-6 py-2 text-sm text-danger-fg">
+          <div className="relative z-10 border-t border-danger-border bg-danger-bg px-6 py-2 text-sm text-danger-fg dark:border-danger-border/40 dark:bg-danger-fg/20 dark:text-danger-bg">
             {error}
           </div>
         ) : null}
-        <ChatComposer onSubmit={send} disabled={sending || !token} />
+        <ChatComposer
+          onSubmit={send}
+          disabled={!token}
+          sending={sending}
+          onStop={stop}
+        />
       </section>
     </div>
   );
@@ -144,7 +461,6 @@ export function applyEvent(
       case 'citation':
         return { ...m, citations: [...m.citations, event.data as Citation] };
       case 'tool_call':
-        // Record the call slot now so the result event can fill it.
         return {
           ...m,
           toolResults: [
@@ -164,9 +480,6 @@ export function applyEvent(
       case 'done':
         return {
           ...m,
-          // Backend ``done`` carries the final reconciled answer + tool_results.
-          // Prefer it over our incremental token buffer to handle the case
-          // where the assistant prepended a live-event banner inside the orch.
           text: event.data.answer || m.text,
           toolResults: (event.data.tool_results as ToolResult[]) ?? m.toolResults,
           flags: event.data.flags ?? m.flags,

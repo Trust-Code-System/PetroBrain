@@ -130,7 +130,7 @@ class PostgresTenantsRepository:
     The tenants table is the platform registry: its RLS policy is keyed on the
     row ``id`` with a ``'*'`` platform-admin bypass, and only platform admins
     write here (enforced by the route layer). This repo therefore connects with
-    the GUC set to ``'*'`` — mirroring LocalJson, which does no repo-level
+    the GUC set to ``'*'`` - mirroring LocalJson, which does no repo-level
     filtering. The RLS policy still exists as defence in depth; a tenant admin
     reading its own row would connect with the GUC set to its own tenant_id.
     """

@@ -94,7 +94,7 @@ export async function syncFromBackend(opts: {
       if (opts.upsert) await opts.upsert(document, chunks);
       deltaChunks += chunks.length;
     }
-    const tail = opts.upsert ? '' : ' (preview — no cache writer wired)';
+    const tail = opts.upsert ? '' : ' (preview - no cache writer wired)';
     return {
       ok: true,
       delta_documents: body.documents.length,

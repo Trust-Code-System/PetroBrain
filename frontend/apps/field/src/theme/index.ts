@@ -1,5 +1,5 @@
 /**
- * Field-app theme — derives from the shared ``@petrobrain/ui/tokens`` so
+ * Field-app theme - derives from the shared ``@petrobrain/ui/tokens`` so
  * sunlight-readable colour pairs stay consistent with web. The field
  * surface only needs a dark + light pair; we don't carry an entire
  * theming runtime.

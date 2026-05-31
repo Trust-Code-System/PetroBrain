@@ -2,10 +2,10 @@
 
 Scope: the on-prem / OT-DMZ deployment (`docker-compose-prod.yml`,
 `PB_LLM_PROVIDER=self_hosted`). PetroBrain Tier-B runs **entirely inside the
-customer boundary** — no outbound calls to any public LLM API. This document
+customer boundary** - no outbound calls to any public LLM API. This document
 records the zone/conduit model, data flows, the IEC 62443-3-3 foundational-
 requirement mapping, and the air-gap test procedure. It is decision-support
-collateral for the operator's own certification — not a certification itself.
+collateral for the operator's own certification - not a certification itself.
 
 ---
 
@@ -15,7 +15,7 @@ collateral for the operator's own certification — not a certification itself.
 ┌─────────────────────────────────────────────────────────────────────┐
 │ ENTERPRISE ZONE (IT)                                  SL-T 1          │
 │   Office users, identity provider (SSO), email                        │
-│   (Tier A — hosted — lives here and is OUT OF SCOPE for Tier B)       │
+│   (Tier A - hosted - lives here and is OUT OF SCOPE for Tier B)       │
 └───────────────▲───────────────────────────────────────────────────────┘
                 │  Conduit C1: HTTPS to PetroBrain UI/API only (no OT reach)
 ┌───────────────┴───────────────────────────────────────────────────────┐
@@ -58,7 +58,7 @@ collateral for the operator's own certification — not a certification itself.
 | API ↔ vLLM | within DMZ | HTTP (loopback net) | prompts never leave the boundary |
 | API ↔ Postgres/Redis/MinIO | within DMZ | TCP, SG-restricted | RLS-enforced per tenant |
 | Historian → PetroBrain | OT → DMZ | read-only pull | one-way; no control writes (Phase 2) |
-| DMZ → Internet | — | **blocked** | no outbound; verified by §4 |
+| DMZ → Internet | - | **blocked** | no outbound; verified by §4 |
 
 ---
 
@@ -76,7 +76,7 @@ collateral for the operator's own certification — not a certification itself.
 
 > Set the target Security Level (SL-T) per zone with the operator. Items marked
 > Phase-2 (historian connector, SIEM forwarding) are conduit-ready but not yet
-> implemented — flag them in the gap assessment rather than claiming coverage.
+> implemented - flag them in the gap assessment rather than claiming coverage.
 
 ---
 
@@ -98,7 +98,7 @@ Run after `docker compose -f docker-compose-prod.yml up -d` to prove no egress:
    This must fail. Enforce with a host firewall / no-NAT network policy; do not
    rely on the absence of SDKs alone.
 3. **LLM path is local**: confirm `PB_LLM_API_BASE` resolves only to the in-DMZ
-   `vllm` service and the model loaded from the read-only mount (no HF download —
+   `vllm` service and the model loaded from the read-only mount (no HF download -
    `HF_HUB_OFFLINE=1`).
 4. **Provider lock**: `PB_LLM_PROVIDER=self_hosted` and `PB_OPERATIONAL_TIER=true`
    in the running environment.

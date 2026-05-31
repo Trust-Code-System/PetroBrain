@@ -1,4 +1,4 @@
-"""PTW module tests — template engine, tool entrypoint, orchestrator wiring."""
+"""PTW module tests - template engine, tool entrypoint, orchestrator wiring."""
 import asyncio
 import os
 import sys
@@ -140,7 +140,7 @@ def _final_response(text="Verify and sign on paper before work begins."):
 
 def test_orchestrator_exposes_ptw_module_with_build_ptw_template_tool():
     assert "ptw" in MODULE_PREAMBLES
-    assert MODULE_TOOLS["ptw"] == ["build_ptw_template"]
+    assert MODULE_TOOLS["ptw"] == ["build_ptw_template", "web_search"]
     assert "build_ptw_template" in TOOL_REGISTRY
 
 

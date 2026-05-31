@@ -73,7 +73,7 @@ describe('KpiCards', () => {
     for (const label of labels) {
       expect(within(container).getByText(label)).toBeInTheDocument();
     }
-    // Numbers come straight from the response — no rounding surprises.
+    // Numbers come straight from the response - no rounding surprises.
     expect(screen.getByText('120.124')).toBeInTheDocument();
     expect(screen.getByText('2.301')).toBeInTheDocument();
     expect(screen.getByText('100')).toBeInTheDocument();

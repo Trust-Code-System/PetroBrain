@@ -2,7 +2,7 @@
  * Generates a permit via ``POST /chat?module=ptw`` and extracts the
  * tool result.
  *
- * The orchestrator returns ``tool_results: [{tool, input, result}]`` —
+ * The orchestrator returns ``tool_results: [{tool, input, result}]`` -
  * we expect ``build_ptw_template`` to be one of them. If the LLM
  * returned prose without using the tool, we raise so the UI can show a
  * "model did not produce a structured permit" message instead of
@@ -85,7 +85,7 @@ export function permitToHtml(permit: GeneratedPermit): string {
 </style>
 </head><body>
   <div class="banner"><b>DECISION SUPPORT ONLY</b><br>${safe(permit.banner)}</div>
-  <h1>${safe(permit.format === 'toolbox_talk' ? 'Toolbox-talk briefing' : 'Permit to Work — draft')}</h1>
+  <h1>${safe(permit.format === 'toolbox_talk' ? 'Toolbox-talk briefing' : 'Permit to Work - draft')}</h1>
   <div class="meta">Permit ID: ${safe(permit.permit_id)} · Generated ${safe(permit.generated_utc)}</div>
 
   <h2>Job</h2>

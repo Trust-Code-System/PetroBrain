@@ -119,7 +119,7 @@ function PlatformTenantsList({ apiBaseUrl, token }: { apiBaseUrl: string; token:
             placeholder="oml-99"
             value={newId}
             onChange={(e) => setNewId(e.target.value)}
-            hint="Stable identifier — used in JWT claims and URLs."
+            hint="Stable identifier - used in JWT claims and URLs."
           />
           <Input
             label="Display name"
@@ -153,7 +153,7 @@ function PlatformTenantsList({ apiBaseUrl, token }: { apiBaseUrl: string; token:
 
       <Card>
         <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-600">
-          Tenants — {query.data?.length ?? 0}
+          Tenants - {query.data?.length ?? 0}
         </h2>
         {query.isLoading ? (
           <p className="mt-3 text-sm text-neutral-500">Loading…</p>

@@ -75,7 +75,7 @@ export function HistoryFilters({ rows, value, onChange }: HistoryFiltersProps) {
 }
 
 /**
- * Pure filter reducer — exported so the test can drive it directly.
+ * Pure filter reducer - exported so the test can drive it directly.
  *
  * Rows whose period doesn't parse as ``YYYY-Q[1-4]`` pass through when
  * the year or quarter filter is "all" but are dropped once the user

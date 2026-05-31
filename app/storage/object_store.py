@@ -114,6 +114,6 @@ def reset_object_store_cache() -> None:
 def object_key_for(*, tenant_id: str, ingest_id: str, filename: str) -> str:
     if not tenant_id or not ingest_id or not filename:
         raise ValueError("tenant_id, ingest_id, filename are required for object_key_for")
-    # Sanitize: keep last path segment only — clients sometimes send full paths.
+    # Sanitize: keep last path segment only - clients sometimes send full paths.
     safe_name = filename.replace("\\", "/").rsplit("/", 1)[-1]
     return f"tenants/{tenant_id}/documents/{ingest_id}/{safe_name}"

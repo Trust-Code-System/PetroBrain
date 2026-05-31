@@ -101,13 +101,23 @@ def stream_chat(payload):
 
 
 def test_stream_chat_emits_tokens_then_done(monkeypatch):
-    llm = StreamingLLM(stream_tokens=["Follow ", "site ", "procedure."])
+    # The "general" module now exposes the web_search tool, so the orchestrator
+    # makes a non-streaming complete() call first to detect any tool_use. When
+    # the model returns plain text (no tool calls) the orchestrator falls back
+    # to a single token event with the full answer.
+    no_tool_response = LLMResponse(
+        text="Follow site procedure.",
+        tool_calls=[],
+        usage={"input": 8, "output": 5},
+        model="fake-model",
+    )
+    llm = StreamingLLM(complete_responses=[no_tool_response])
     monkeypatch.setattr(routes_chat, "_orch", Orchestrator(llm=llm))
 
     events = stream_chat({"message": "Explain flare MRV checks", "module": "general"})
 
-    assert [name for name, _ in events] == ["token", "token", "token", "done"]
-    assert "".join(data["text"] for name, data in events if name == "token") == "Follow site procedure."
+    assert [name for name, _ in events] == ["token", "done"]
+    assert events[0][1]["text"] == "Follow site procedure."
     assert events[-1][1]["answer"] == "Follow site procedure."
     assert events[-1][1]["flags"] == []
 

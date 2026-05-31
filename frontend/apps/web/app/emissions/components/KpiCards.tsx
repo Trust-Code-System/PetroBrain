@@ -10,7 +10,7 @@ export interface KpiCardsProps {
  * Top KPI strip for the MRV viewer.
  *
  * Every value is read straight from the backend response. No client-side
- * arithmetic — totals come from the inventory engine and tier-readiness
+ * arithmetic - totals come from the inventory engine and tier-readiness
  * comes from the GHGEMP report builder.
  */
 export function KpiCards({ response }: KpiCardsProps) {
@@ -57,10 +57,10 @@ function Kpi({ label, value, suffix, accessory }: KpiProps) {
     <Card>
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{label}</p>
-          <p className="mt-1 text-3xl font-semibold text-neutral-800 tabular-nums">
+          <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{label}</p>
+          <p className="mt-1 text-3xl font-semibold text-neutral-800 tabular-nums dark:text-neutral-100">
             {value}
-            <span className="ml-1 text-base font-normal text-neutral-500">{suffix}</span>
+            <span className="ml-1 text-base font-normal text-neutral-500 dark:text-neutral-400">{suffix}</span>
           </p>
         </div>
         <div className="pt-1">{accessory}</div>

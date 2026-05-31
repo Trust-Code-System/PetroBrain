@@ -1,5 +1,5 @@
 """
-Permit-to-Work module — agent preamble + tool wiring.
+Permit-to-Work module - agent preamble + tool wiring.
 
 The PTW module is decision support: the LLM helps draft a permit from
 structured inputs, but the Permit Issuer and Performing Authority are
@@ -43,7 +43,7 @@ BUILD_PTW_TEMPLATE_TOOL: dict[str, Any] = {
         "Build a Permit-to-Work draft or a toolbox-talk briefing from the supplied "
         "job context (description, location, work type, hazards, controls, "
         "isolations). Returns a structured permit document with the verification "
-        "banner. SAFETY-CRITICAL: decision support only — the Permit Issuer and "
+        "banner. SAFETY-CRITICAL: decision support only - the Permit Issuer and "
         "Performing Authority sign before work begins."
     ),
     "parameters": {

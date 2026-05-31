@@ -15,7 +15,7 @@ import type { TextSize } from '../../src/lib/settings/preferences';
 import type { SavedPermit } from '../../src/lib/ptw/types';
 
 /**
- * PTW landing tab — list of locally saved permits + "Create new".
+ * PTW landing tab - list of locally saved permits + "Create new".
  *
  * Drafts (status=draft_unsigned) and signed permits live alongside;
  * status badge + timestamp tell them apart. Tapping a row opens
@@ -43,7 +43,7 @@ export default function PtwScreen() {
     return (
       <ScreenContainer theme={theme} textSize={textSize}>
         <Banner tone="warn" title="Sign in required" theme={theme} textSize={textSize}>
-          Sign in to use the PTW workflow — permits are saved under your principal.
+          Sign in to use the PTW workflow - permits are saved under your principal.
         </Banner>
       </ScreenContainer>
     );

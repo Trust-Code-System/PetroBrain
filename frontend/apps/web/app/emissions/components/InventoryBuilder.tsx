@@ -12,9 +12,9 @@ const GWP_SETS = [
   { value: 'AR4', label: 'IPCC AR4' },
 ];
 const TARGET_TIERS = [
-  { value: 'Tier 3', label: 'Tier 3 — measurement-based' },
-  { value: 'Tier 2', label: 'Tier 2 — factor-based' },
-  { value: 'Tier 1', label: 'Tier 1 — default factors' },
+  { value: 'Tier 3', label: 'Tier 3 - measurement-based' },
+  { value: 'Tier 2', label: 'Tier 2 - factor-based' },
+  { value: 'Tier 1', label: 'Tier 1 - default factors' },
 ];
 
 const SAMPLE_SOURCES = JSON.stringify(
@@ -48,7 +48,7 @@ export interface InventoryBuilderProps {
 /**
  * Pragmatic Phase-1 builder.
  *
- * Sources are entered as JSON — the underlying ``MRVRequest`` carries an
+ * Sources are entered as JSON - the underlying ``MRVRequest`` carries an
  * array of typed sources with shape-varying ``params``, and a proper
  * per-source-type wizard belongs to a later task. Engineers can paste
  * directly from the SOP / spreadsheet they own today.
@@ -153,10 +153,10 @@ export function InventoryBuilder({
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="sources-json" className="text-sm font-medium text-neutral-700">
+          <label htmlFor="sources-json" className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
             Sources (JSON)
           </label>
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">
             Array of <code className="font-mono">{'{source_id, source_type, params}'}</code>.
             <code className="font-mono">source_type</code> is one of: flaring, venting, fugitive_t2,
             fugitive_t3, combustion.
@@ -168,11 +168,11 @@ export function InventoryBuilder({
             onChange={(e) => setSourcesText(e.target.value)}
             spellCheck={false}
             disabled={pending}
-            className="w-full rounded-md border border-neutral-300 bg-white p-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-primary-400"
+            className="w-full rounded-md border border-neutral-300 bg-white p-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-primary-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:focus:ring-primary-500"
           />
           {parseError ? (
-            <p role="alert" className="text-xs text-danger-fg">
-              JSON parse error — {parseError}
+            <p role="alert" className="text-xs text-danger-fg dark:text-danger-bg">
+              JSON parse error - {parseError}
             </p>
           ) : null}
         </div>

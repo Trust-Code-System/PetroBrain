@@ -13,7 +13,7 @@ import { useFieldTheme } from '../src/lib/session/useColorMode';
  * an unauthenticated user lands on the paste-token screen and an
  * authenticated user lands on the tabs.
  *
- * Note: NO ``'use client'`` directive — RN doesn't have a server/client
+ * Note: NO ``'use client'`` directive - RN doesn't have a server/client
  * split. Everything in expo-router is the client.
  */
 export default function RootLayout() {

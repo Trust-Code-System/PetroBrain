@@ -11,7 +11,7 @@ import { useAdminSession } from '@/lib/session/store';
  * Dev sign-in for the admin console.
  *
  * A real deployment swaps this for SSO. The console explicitly accepts
- * platform-admin OR tenant-admin tokens — the rest of the UI gates per
+ * platform-admin OR tenant-admin tokens - the rest of the UI gates per
  * route depending on the role.
  */
 export function AuthGate() {
@@ -38,7 +38,7 @@ export function AuthGate() {
   return (
     <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-4 p-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold text-neutral-800">PetroBrain — Admin</h1>
+        <h1 className="text-2xl font-semibold text-neutral-800">PetroBrain - Admin</h1>
         <p className="text-sm text-neutral-500">
           Paste a JWT with the same <code className="font-mono">PB_JWT_SECRET</code> as the backend.
         </p>

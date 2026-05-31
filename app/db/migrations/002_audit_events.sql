@@ -1,7 +1,7 @@
 -- Immutable audit log of platform activity.
 --
 -- The table stores HASHES of the request and response payloads (and the
--- retrieved-clause list, flags, and LLM usage) — never the raw text. This
+-- retrieved-clause list, flags, and LLM usage) - never the raw text. This
 -- keeps PII and prompts out of the audit store while still providing
 -- chain-of-custody for safety reviews and red-team forensics.
 --
@@ -42,5 +42,5 @@ USING (current_setting('petrobrain.tenant_id') = tenant_id)
 WITH CHECK (current_setting('petrobrain.tenant_id') = tenant_id);
 
 -- Make rows append-only at the database layer too. The application code
--- never issues UPDATE/DELETE — block it here as defence in depth.
+-- never issues UPDATE/DELETE - block it here as defence in depth.
 REVOKE UPDATE, DELETE ON audit_events FROM PUBLIC;

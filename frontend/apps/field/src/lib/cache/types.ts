@@ -1,5 +1,5 @@
 /**
- * Local document cache types (pure TS — importable without React Native).
+ * Local document cache types (pure TS - importable without React Native).
  *
  * The shape mirrors a subset of the backend's doc_chunks rows: each
  * document carries title/revision/asset metadata + the chunked body.

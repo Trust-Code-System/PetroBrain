@@ -32,7 +32,7 @@ describe('AssetCombobox', () => {
 
     const input = screen.getByRole('combobox', { name: 'Asset' });
     await userEvent.click(input);
-    await userEvent.click(screen.getByText('— No asset context —'));
+    await userEvent.click(screen.getByText('- No asset context -'));
     expect(onChange).toHaveBeenLastCalledWith(null);
   });
 
