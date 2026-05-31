@@ -1,34 +1,35 @@
-databases:
-  - name: petrobrain-db
-    plan: basic_256mb
-    region: frankfurt
-    postgresMajorVersion: "16"
-    databaseName: petrobrain
-    user: petrobrain
-    ipAllowList: []
+# PetroBrain Render Blueprint (Free Tier).
+#
+# Zero-cost first-deploy config:
+#   - Web service on Render's Free plan (cold-starts after 15 min idle).
+#   - No managed Postgres; persistence_backend=local_json stores everything
+#     inside the container, so data resets on every deploy/restart.
+#   - Reranker disabled to keep RAM under the 512 MB free-tier ceiling.
+#
+# To promote to production:
+#   1. Add a `databases:` block (Postgres Basic-256MB, $6/mo).
+#   2. Change `plan: free` -> `plan: starter` ($7/mo, no cold starts).
+#   3. Set PB_PERSISTENCE_BACKEND back to `postgres` and add the
+#      PB_DATABASE_URL fromDatabase reference.
+#   4. Re-enable PB_RERANK_ENABLED if you want better RAG quality.
 
 services:
   - type: web
     name: petrobrain-api
     runtime: docker
-    plan: starter
+    plan: free
     region: frankfurt
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /health
     autoDeploy: true
-    dockerCommand: sh -c "python -m app.db.pg && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: PORT
         value: "8000"
 
-      # --- Wire to managed Postgres ---
-      - key: PB_DATABASE_URL
-        fromDatabase:
-          name: petrobrain-db
-          property: connectionString
+      # --- Persistence: fileless mode (data resets on restart). ---
       - key: PB_PERSISTENCE_BACKEND
-        value: postgres
+        value: local_json
 
       # --- App identity ---
       - key: PB_ENVIRONMENT
@@ -50,20 +51,16 @@ services:
       - key: OPENAI_API_KEY
         sync: false
 
-      # --- Reranker (CPU-only, runs in the web dyno) ---
+      # --- Reranker disabled on free tier (512 MB RAM ceiling).
+      #     Re-enable when on Starter plan. ---
       - key: PB_RERANK_ENABLED
-        value: "true"
-      - key: PB_RERANK_MODEL
-        value: cross-encoder/ms-marco-MiniLM-L-6-v2
-      - key: PB_RERANK_CACHE_DIR
-        value: /tmp/petrobrain-rerank
+        value: "false"
 
-      # --- Object storage: in-memory for v1 (uploads do not persist between
-      #     deploys). Swap to s3 + AWS/MinIO when needed. ---
+      # --- Object storage: in-memory; uploads do not persist. ---
       - key: PB_OBJECT_STORE_BACKEND
         value: memory
 
-      # --- Redis / Celery: disabled. Jobs run inline. ---
+      # --- Celery: inline; no Redis dependency. ---
       - key: PB_CELERY_TASK_ALWAYS_EAGER
         value: "true"
       - key: PB_TOKEN_COST_REDIS_ENABLED
@@ -75,7 +72,7 @@ services:
       - key: PB_METRICS_ENABLED
         value: "true"
 
-      # --- Auth ---
+      # --- Auth: Render generates a strong secret on first deploy. ---
       - key: PB_JWT_SECRET
         generateValue: true
       - key: PB_JWT_ISSUER
@@ -83,11 +80,11 @@ services:
       - key: PB_JWT_AUDIENCE
         value: petrobrain-api
 
-      # --- Web search (Tavily). Leave empty in dashboard to disable the tool. ---
+      # --- Optional web search via Tavily. Leave blank to disable. ---
       - key: PB_TAVILY_API_KEY
         sync: false
 
-      # --- CORS: paste the Vercel domain after the first frontend deploy,
-      #     e.g. https://petrobrain.vercel.app,https://petrobrain-admin.vercel.app ---
+      # --- CORS: paste the Vercel domain after the first frontend deploy.
+      #     For first deploy, set to '*' so any origin can call the API. ---
       - key: PB_CORS_ALLOW_ORIGINS
         sync: false
