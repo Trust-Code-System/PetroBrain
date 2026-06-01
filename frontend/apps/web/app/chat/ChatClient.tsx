@@ -6,6 +6,7 @@ import type { Citation, ToolResult } from '@petrobrain/types';
 
 import { useChatStore } from '@/lib/chat/store';
 import { ownerKeyOf, useConversationsStore } from '@/lib/chat/conversations';
+import { exportConversation, isExportable } from '@/lib/chat/exportConversation';
 import { useProjectsStore } from '@/lib/chat/projects';
 import { useSettingsStore } from '@/lib/chat/settings';
 import { streamChat, type StreamEvent } from '@/lib/chat/streamChat';
@@ -402,6 +403,25 @@ export function ChatClient() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => activeConversation && exportConversation(activeConversation)}
+              disabled={!activeConversation || !isExportable(messages)}
+              title="Export this conversation as Markdown"
+              aria-label="Export conversation"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200/70 bg-white/80 text-neutral-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur transition-all hover:border-primary-300 hover:bg-white hover:text-primary-700 hover:shadow-[0_4px_12px_-4px_rgba(234,88,12,0.25)] disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700/70 dark:bg-neutral-900/70 dark:text-neutral-300 dark:hover:border-primary-600 dark:hover:bg-neutral-900 dark:hover:text-primary-300"
+            >
+              <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden>
+                <path
+                  d="M6 3h6l4 4v9a1.5 1.5 0 01-1.5 1.5h-8.5A1.5 1.5 0 014.5 16V4.5A1.5 1.5 0 016 3z"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinejoin="round"
+                />
+                <path d="M11.5 3v4h4" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                <path d="M10 9v5m0 0l-2-2m2 2l2-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
             <button
               type="button"
               onClick={() => ownerKey && newConversation(ownerKey, activeProject?.id ?? null)}
