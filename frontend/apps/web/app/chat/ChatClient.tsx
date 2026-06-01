@@ -7,6 +7,7 @@ import type { Citation, ToolResult } from '@petrobrain/types';
 import { useChatStore } from '@/lib/chat/store';
 import { ownerKeyOf, useConversationsStore } from '@/lib/chat/conversations';
 import { exportConversation, isExportable } from '@/lib/chat/exportConversation';
+import { buildSnapshot, mintShare, shareUrlFor, ShareApiError } from '@/lib/chat/shares';
 import { useProjectsStore } from '@/lib/chat/projects';
 import { useSettingsStore } from '@/lib/chat/settings';
 import { streamChat, type StreamEvent } from '@/lib/chat/streamChat';
@@ -80,6 +81,41 @@ export function ChatClient() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  const [shareStatus, setShareStatus] = useState<
+    | { kind: 'idle' }
+    | { kind: 'minting' }
+    | { kind: 'shared'; url: string; expiresUtc: string }
+    | { kind: 'error'; message: string }
+  >({ kind: 'idle' });
+
+  const share = useCallback(async () => {
+    if (!token || !activeConversation || !isExportable(messages)) return;
+    setShareStatus({ kind: 'minting' });
+    try {
+      const snapshot = buildSnapshot(activeConversation, module);
+      const record = await mintShare(apiBaseUrl, token, {
+        title: activeConversation.title || 'Untitled conversation',
+        snapshot,
+      });
+      const url = shareUrlFor(record.token, window.location.origin);
+      try {
+        await navigator.clipboard.writeText(url);
+      } catch {
+        // Clipboard may be blocked in non-secure contexts - still show the link.
+      }
+      setShareStatus({ kind: 'shared', url, expiresUtc: record.expires_utc });
+    } catch (err) {
+      const message = err instanceof ShareApiError ? err.message : 'Could not create share link.';
+      setShareStatus({ kind: 'error', message });
+    }
+  }, [token, activeConversation, messages, module, apiBaseUrl]);
+
+  useEffect(() => {
+    if (shareStatus.kind !== 'shared' && shareStatus.kind !== 'error') return;
+    const timeout = setTimeout(() => setShareStatus({ kind: 'idle' }), 6000);
+    return () => clearTimeout(timeout);
+  }, [shareStatus]);
 
   // When the principal arrives but no chat is active, do nothing - the
   // user lands on the empty state and we create a conversation on first
@@ -424,6 +460,30 @@ export function ChatClient() {
             </button>
             <button
               type="button"
+              onClick={share}
+              disabled={!activeConversation || !isExportable(messages) || shareStatus.kind === 'minting'}
+              title="Share this conversation with your team (30-day link)"
+              aria-label="Share conversation"
+              className="inline-flex h-9 items-center gap-1.5 rounded-full border border-neutral-200/70 bg-white/80 px-3 text-sm font-medium text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur transition-all hover:border-primary-300 hover:bg-white hover:text-primary-700 hover:shadow-[0_4px_12px_-4px_rgba(234,88,12,0.25)] disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700/70 dark:bg-neutral-900/70 dark:text-neutral-200 dark:hover:border-primary-600 dark:hover:bg-neutral-900 dark:hover:text-primary-300"
+            >
+              {shareStatus.kind === 'minting' ? (
+                <svg width="13" height="13" viewBox="0 0 20 20" fill="none" aria-hidden className="animate-spin">
+                  <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="2" strokeOpacity="0.25" />
+                  <path d="M17 10a7 7 0 00-7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              ) : (
+                <svg width="13" height="13" viewBox="0 0 20 20" fill="none" aria-hidden>
+                  <path d="M7.5 12L12.5 8M7.5 8L12.5 12" stroke="currentColor" strokeWidth="0" />
+                  <circle cx="5" cy="10" r="2.25" stroke="currentColor" strokeWidth="1.5" />
+                  <circle cx="15" cy="5" r="2.25" stroke="currentColor" strokeWidth="1.5" />
+                  <circle cx="15" cy="15" r="2.25" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="M6.8 8.8L13.2 5.7M6.8 11.2L13.2 14.3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              )}
+              Share
+            </button>
+            <button
+              type="button"
               onClick={() => ownerKey && newConversation(ownerKey, activeProject?.id ?? null)}
               disabled={!ownerKey}
               className="group relative isolate inline-flex h-9 items-center gap-1.5 rounded-full bg-gradient-to-b from-neutral-900 to-neutral-800 px-3.5 text-sm font-semibold text-white shadow-[0_6px_14px_-6px_rgba(15,23,42,0.45),inset_0_1px_0_rgba(255,255,255,0.15)] transition-all hover:from-neutral-800 hover:to-neutral-700 hover:shadow-[0_10px_24px_-8px_rgba(15,23,42,0.45)] disabled:cursor-not-allowed disabled:opacity-50 dark:from-primary-700 dark:to-primary-800 dark:hover:from-primary-600 dark:hover:to-primary-700"
@@ -435,6 +495,37 @@ export function ChatClient() {
             </button>
           </div>
         </header>
+
+        {shareStatus.kind === 'shared' ? (
+          <div className="relative z-20 border-b border-primary-200/60 bg-primary-50/70 px-7 py-2 text-xs text-primary-900 dark:border-primary-700/40 dark:bg-primary-900/30 dark:text-primary-100">
+            <div className="flex items-center justify-between gap-3">
+              <span className="flex items-center gap-2">
+                <svg width="13" height="13" viewBox="0 0 20 20" fill="none" aria-hidden>
+                  <path d="M5 10.5L8.5 14L15 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span className="font-semibold">Link copied to clipboard.</span>
+                <span className="hidden text-primary-700/80 dark:text-primary-200/80 sm:inline">
+                  Expires {new Date(shareStatus.expiresUtc).toLocaleDateString()}. Only signed-in users in your tenant can view it.
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setShareStatus({ kind: 'idle' })}
+                aria-label="Dismiss"
+                className="text-primary-700/70 hover:text-primary-900 dark:text-primary-300/70 dark:hover:text-primary-100"
+              >
+                <svg width="12" height="12" viewBox="0 0 20 20" fill="none">
+                  <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {shareStatus.kind === 'error' ? (
+          <div className="relative z-20 border-b border-danger-border bg-danger-bg px-7 py-2 text-xs text-danger-fg dark:border-danger-border/40 dark:bg-danger-fg/20 dark:text-danger-bg">
+            Could not share: {shareStatus.message}
+          </div>
+        ) : null}
 
         <div
           ref={scrollRef}

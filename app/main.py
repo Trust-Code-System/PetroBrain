@@ -19,6 +19,7 @@ from app.api import (
     routes_auth,
     routes_calc,
     routes_chat,
+    routes_chat_shares,
     routes_documents,
     routes_emissions,
     routes_wellcontrol,
@@ -47,6 +48,7 @@ setup_observability(app, settings)
 
 app.include_router(routes_auth.router)
 app.include_router(routes_chat.router)
+app.include_router(routes_chat_shares.router)
 app.include_router(routes_wellcontrol.router)
 app.include_router(routes_emissions.router)
 app.include_router(routes_documents.router)
