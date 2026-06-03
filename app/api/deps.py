@@ -6,8 +6,10 @@ from collections.abc import Callable
 
 import jwt
 from fastapi import Depends, Header, HTTPException
+from fastapi.concurrency import run_in_threadpool
 
 from app.config import get_settings
+from app.core import neon_auth
 
 
 VALID_ROLES = {"platform_admin", "admin", "engineer", "field", "hse"}
@@ -27,6 +29,15 @@ async def get_principal(authorization: str = Header(default="")) -> Principal:
     scheme, _, token = authorization.partition(" ")
     if scheme.lower() != "bearer" or not token:
         raise HTTPException(status_code=401, detail="invalid credentials")
+
+    # Pick the verification path by the token's algorithm. Neon Auth (Better Auth) tokens are
+    # EdDSA and verified against Neon's JWKS; our own tokens are HS256/RS256.
+    try:
+        alg = jwt.get_unverified_header(token).get("alg")
+    except jwt.InvalidTokenError as exc:
+        raise HTTPException(status_code=401, detail="invalid credentials") from exc
+    if alg == "EdDSA":
+        return await _neon_principal(token)
 
     settings = get_settings()
     key, algorithm = _jwt_key_and_algorithm(settings)
@@ -56,6 +67,39 @@ async def get_principal(authorization: str = Header(default="")) -> Principal:
     if principal.role not in VALID_ROLES:
         raise HTTPException(status_code=401, detail="invalid credentials")
     return principal
+
+
+async def _neon_principal(token: str) -> Principal:
+    """
+    Verify a Neon Auth (Better Auth) EdDSA token and map it to a Principal.
+
+    Neon tokens carry the user's identity (``sub``/``email``) but not our tenant/role, so for
+    now every Neon user maps into the default tenant with the default role (configurable via
+    ``PB_DEFAULT_SIGNUP_TENANT_ID`` / ``PB_DEFAULT_SIGNUP_ROLE``). Real per-user tenant/role
+    resolution (a memberships table keyed by the Neon ``sub``) is a follow-up.
+    """
+    if not neon_auth.is_configured():
+        raise HTTPException(status_code=401, detail="invalid credentials")
+    try:
+        # JWKS fetch + verify is blocking; keep it off the event loop.
+        claims = await run_in_threadpool(neon_auth.verify_neon_token, token)
+    except Exception as exc:  # JWKS fetch / signature / expiry failure
+        raise HTTPException(status_code=401, detail="invalid credentials") from exc
+
+    sub = claims.get("sub")
+    if not isinstance(sub, str) or not sub.strip():
+        raise HTTPException(status_code=401, detail="invalid credentials")
+
+    settings = get_settings()
+    role = settings.default_signup_role
+    if role not in VALID_ROLES:
+        role = "engineer"
+    return Principal(
+        tenant_id=settings.default_signup_tenant_id,
+        user_id=sub,
+        role=role,
+        allowed_assets=["*"],
+    )
 
 
 def require_role(*roles: str) -> Callable[[Principal], Principal]:
