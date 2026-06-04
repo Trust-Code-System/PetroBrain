@@ -247,6 +247,91 @@ def test_promote_refuses_other_tenants_feedback(feedback_repo):
 
 # ---- safety: memory store failure must not break chat -------------------
 
+def test_glossary_candidates_endpoint_surfaces_recurring_terms(memory_repo):
+    """Two memories that both mention 'WHP' show up as a candidate with
+    count=2. Already-promoted terminology bodies are filtered out."""
+    memory_repo.create(
+        tenant_id="t1", kind="preference",
+        body="We call wellhead pressure WHP on this asset.",
+        created_by="admin-1",
+    )
+    memory_repo.create(
+        tenant_id="t1", kind="preference",
+        body="WHP is reported in psi unless noted.",
+        created_by="admin-1",
+    )
+    r = client.get(
+        "/admin/memory/glossary-candidates",
+        headers=auth_headers(tenant_id="t1", role="admin"),
+    )
+    assert r.status_code == 200
+    body = r.json()
+    by_term = {c["term"]: c for c in body["candidates"]}
+    assert "WHP" in by_term
+    assert by_term["WHP"]["count"] == 2
+
+
+def test_glossary_candidates_excludes_already_promoted_terminology(memory_repo):
+    """A terminology memory with body=='WHP' suppresses WHP as a suggestion -
+    otherwise the admin would keep getting nagged about a term they already
+    approved."""
+    memory_repo.create(
+        tenant_id="t1", kind="preference",
+        body="We call wellhead pressure WHP on this asset.",
+        created_by="admin-1",
+    )
+    memory_repo.create(
+        tenant_id="t1", kind="preference",
+        body="WHP is reported in psi unless noted.",
+        created_by="admin-1",
+    )
+    memory_repo.create(
+        tenant_id="t1", kind="terminology",
+        body="WHP",
+        created_by="admin-1",
+    )
+    r = client.get(
+        "/admin/memory/glossary-candidates",
+        headers=auth_headers(tenant_id="t1", role="admin"),
+    )
+    by_term = {c["term"]: c for c in r.json()["candidates"]}
+    assert "WHP" not in by_term
+
+
+def test_glossary_candidates_requires_admin(memory_repo):
+    memory_repo.create(
+        tenant_id="t1", kind="preference",
+        body="WHP twice.", created_by="admin-1",
+    )
+    memory_repo.create(
+        tenant_id="t1", kind="preference",
+        body="WHP also.", created_by="admin-1",
+    )
+    r = client.get(
+        "/admin/memory/glossary-candidates",
+        headers=auth_headers(tenant_id="t1", role="engineer"),
+    )
+    assert r.status_code == 403
+
+
+def test_memory_trend_returns_gap_free_weeks(memory_repo):
+    memory_repo.create(
+        tenant_id="t1", kind="preference",
+        body="Default unit is metric.", created_by="admin-1",
+    )
+    r = client.get(
+        "/admin/memory/trend?weeks=4",
+        headers=auth_headers(tenant_id="t1", role="admin"),
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["weeks"] == 4
+    assert len(body["series"]) == 4
+    # Total across the window must include the row we just created.
+    total = sum(p["manual"] + p["promoted"] for p in body["series"])
+    assert total >= 1
+
+
 def test_orchestrator_helper_returns_empty_on_repo_error(monkeypatch):
     """If the memory repo raises (DB down, schema drift, etc.) the helper
     that the orchestrator calls must return an empty list, so chat keeps

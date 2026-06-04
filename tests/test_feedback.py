@@ -206,6 +206,34 @@ def test_feedback_post_updates_chunk_weights_via_attribution(
     assert all(0.85 < w < 0.95 for w in weights.values())
 
 
+def test_feedback_trend_returns_gap_free_days(feedback_repo):
+    """The chart needs every day present even when no feedback landed that day,
+    otherwise the x-axis is irregular."""
+    feedback_repo.upsert(
+        tenant_id="t1", user_id="u1", turn_id="T-A", rating="up",
+    )
+    r = client.get(
+        "/admin/feedback/trend?days=7",
+        headers=auth_headers(tenant_id="t1", role="admin"),
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["days"] == 7
+    assert len(body["series"]) == 7
+    # Today's bucket should contain the row we just wrote.
+    last = body["series"][-1]
+    assert last["up"] == 1
+    assert last["down"] == 0
+
+
+def test_feedback_trend_requires_admin(feedback_repo):
+    r = client.get(
+        "/admin/feedback/trend",
+        headers=auth_headers(tenant_id="t1", role="engineer"),
+    )
+    assert r.status_code == 403
+
+
 def test_feedback_post_with_no_attribution_still_records_feedback(
     feedback_repo, tmp_path, monkeypatch,
 ):

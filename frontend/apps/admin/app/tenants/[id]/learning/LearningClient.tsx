@@ -9,6 +9,7 @@ import {
   createMemory,
   getFeedbackSummary,
   getFeedbackTrend,
+  getGlossaryCandidates,
   getMemoryTrend,
   listChunkWeights,
   listFeedback,
@@ -20,6 +21,7 @@ import type {
   ChunkWeightRow,
   FeedbackRow,
   FeedbackTrendPoint,
+  GlossaryCandidate,
   MemoryKind,
   MemoryRow,
   MemoryTrendPoint,
@@ -100,6 +102,10 @@ function LearningView({
     queryKey: ['learning', tenantId, 'memory-trend'],
     queryFn: ({ signal }) => getMemoryTrend({ ...auth, signal, weeks: 12 }),
   });
+  const glossary = useQuery({
+    queryKey: ['learning', tenantId, 'glossary'],
+    queryFn: ({ signal }) => getGlossaryCandidates({ ...auth, signal, minCount: 2 }),
+  });
 
   return (
     <AdminShell
@@ -134,6 +140,14 @@ function LearningView({
         rows={memories.data?.memories ?? []}
         loading={memories.isLoading}
         error={memories.error}
+        auth={auth}
+      />
+
+      <GlossarySection
+        tenantId={tenantId}
+        candidates={glossary.data?.candidates ?? []}
+        loading={glossary.isLoading}
+        error={glossary.error}
         auth={auth}
       />
 
@@ -553,6 +567,176 @@ function MemorySection({
         ) : null}
       </div>
     </Card>
+  );
+}
+
+// ---- Glossary section --------------------------------------------------
+
+function GlossarySection({
+  tenantId,
+  candidates,
+  loading,
+  error,
+  auth,
+}: {
+  tenantId: string;
+  candidates: GlossaryCandidate[];
+  loading: boolean;
+  error: unknown;
+  auth: { baseUrl: string; token: string; tenantId: string };
+}) {
+  const qc = useQueryClient();
+  const [approving, setApproving] = useState<GlossaryCandidate | null>(null);
+  const [body, setBody] = useState('');
+  const [approveError, setApproveError] = useState<string | null>(null);
+
+  const approveMutation = useMutation({
+    mutationFn: () =>
+      createMemory({
+        baseUrl: auth.baseUrl,
+        token: auth.token,
+        tenantId: auth.tenantId,
+        body,
+        kind: 'terminology',
+      }),
+    onSuccess: () => {
+      setApproving(null);
+      setBody('');
+      setApproveError(null);
+      qc.invalidateQueries({ queryKey: ['learning', tenantId, 'memories'] });
+      qc.invalidateQueries({ queryKey: ['learning', tenantId, 'glossary'] });
+    },
+    onError: (err) => setApproveError((err as Error).message),
+  });
+
+  function startApprove(c: GlossaryCandidate) {
+    setApproving(c);
+    // Pre-fill with a sentence rather than the bare term so the body is a
+    // memory the model can use, not an orphan token. The admin tweaks before
+    // saving.
+    setBody(`We use the term "${c.term}" on this asset.`);
+    setApproveError(null);
+  }
+
+  return (
+    <Card
+      title="Glossary candidates"
+      description="Terms that recur across this tenant's memories. Approving one creates a terminology memory in a single click."
+    >
+      {error ? (
+        <Banner tone="danger" title="Failed to load glossary candidates">
+          {(error as Error).message}
+        </Banner>
+      ) : null}
+      {loading ? <p className="text-sm text-neutral-500">Loading…</p> : null}
+      {!loading && candidates.length === 0 ? (
+        <p className="text-sm text-neutral-500">
+          No recurring terms yet. As more memories land, terms that appear
+          across two or more will show up here for one-click approval.
+        </p>
+      ) : null}
+      {candidates.length > 0 ? (
+        <ul className="divide-y divide-neutral-200">
+          {candidates.map((c) => (
+            <li key={c.term} className="flex items-center justify-between gap-3 py-2.5">
+              <div className="min-w-0 flex-1">
+                <p className="font-mono text-sm font-medium text-neutral-800">{c.term}</p>
+                <p className="mt-0.5 text-[11px] text-neutral-500">
+                  mentioned in {c.count} {c.count === 1 ? 'memory' : 'memories'}
+                </p>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => startApprove(c)}>
+                Approve as glossary entry
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {approving ? (
+        <ApproveGlossaryDialog
+          candidate={approving}
+          body={body}
+          setBody={setBody}
+          error={approveError}
+          submitting={approveMutation.isPending}
+          onCancel={() => {
+            setApproving(null);
+            setApproveError(null);
+          }}
+          onSubmit={() => {
+            if (!body.trim()) {
+              setApproveError('Memory body cannot be empty.');
+              return;
+            }
+            approveMutation.mutate();
+          }}
+        />
+      ) : null}
+    </Card>
+  );
+}
+
+function ApproveGlossaryDialog({
+  candidate,
+  body,
+  setBody,
+  error,
+  submitting,
+  onCancel,
+  onSubmit,
+}: {
+  candidate: GlossaryCandidate;
+  body: string;
+  setBody: (v: string) => void;
+  error: string | null;
+  submitting: boolean;
+  onCancel: () => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="w-full max-w-lg rounded-lg border border-neutral-200 bg-white p-5 shadow-lg">
+        <h3 className="text-base font-semibold text-neutral-800">Approve glossary entry</h3>
+        <p className="mt-1 text-xs text-neutral-500">
+          Saving creates a <strong>terminology</strong> memory that gets injected into every
+          future chat turn for this tenant. Phrase it as a sentence the model can use, not
+          just the bare term.
+        </p>
+        <div className="mt-3 rounded-md bg-neutral-50 p-2 text-xs text-neutral-600">
+          <span className="font-medium">Recurring term:</span> <span className="font-mono">{candidate.term}</span>
+          {' · seen in '}
+          {candidate.count}{' '}{candidate.count === 1 ? 'memory' : 'memories'}
+        </div>
+        <label
+          htmlFor={`glossary-body-${candidate.term}`}
+          className="mt-3 block text-xs font-medium uppercase tracking-[0.06em] text-neutral-500"
+        >
+          Memory body
+        </label>
+        <textarea
+          id={`glossary-body-${candidate.term}`}
+          aria-label="Memory body for glossary entry"
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={3}
+          maxLength={280}
+          placeholder={`e.g. We use the term "${candidate.term}" on this asset.`}
+          className="mt-1 w-full rounded-md border border-neutral-300 p-2 text-sm focus:border-primary-500 focus:outline-none"
+        />
+        <div className="mt-1 text-right text-[10px] text-neutral-400">{body.length} / 280</div>
+        {error ? (
+          <p className="mt-2 text-xs text-danger-fg">{error}</p>
+        ) : null}
+        <div className="mt-4 flex items-center justify-end gap-2">
+          <Button variant="ghost" onClick={onCancel} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button onClick={onSubmit} disabled={submitting}>
+            {submitting ? 'Saving…' : 'Save glossary entry'}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 

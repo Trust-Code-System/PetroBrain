@@ -10,6 +10,7 @@ import type {
   FeedbackRow,
   FeedbackSummary,
   FeedbackTrend,
+  GlossaryCandidates,
   MemoryKind,
   MemoryRow,
   MemoryStatus,
@@ -231,6 +232,15 @@ export async function getMemoryTrend(
   if (opts.tenantId) url.searchParams.set('tenant_id', opts.tenantId);
   if (opts.weeks != null) url.searchParams.set('weeks', String(opts.weeks));
   return json<MemoryTrend>(await fetch(url, init(opts)));
+}
+
+export async function getGlossaryCandidates(
+  opts: ReqOpts & { tenantId?: string; minCount?: number },
+): Promise<GlossaryCandidates> {
+  const url = new URL('/admin/memory/glossary-candidates', opts.baseUrl);
+  if (opts.tenantId) url.searchParams.set('tenant_id', opts.tenantId);
+  if (opts.minCount != null) url.searchParams.set('min_count', String(opts.minCount));
+  return json<GlossaryCandidates>(await fetch(url, init(opts)));
 }
 
 export interface MemoryResult {

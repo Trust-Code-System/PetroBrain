@@ -26,6 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.deps import Principal, is_platform_admin, require_role
 from app.core.audit import AuditEvent, get_audit_logger
+from app.core.glossary_extractor import extract_candidates
 from app.core.memory_guard import check_memory_body
 from app.db.feedback_repository import get_feedback_repository
 from app.db.tenant_memory_repository import (
@@ -46,6 +47,46 @@ audit_logger = get_audit_logger()
 
 MAX_LIMIT = 200
 DEFAULT_LIMIT = 100
+
+
+@router.get("/glossary-candidates")
+async def glossary_candidates(
+    tenant_id: str | None = Query(default=None),
+    min_count: int = Query(default=2, ge=2, le=20),
+    limit: int = Query(default=50, ge=1, le=200),
+    who: Principal = Depends(_admin_or_platform),
+):
+    """Suggested glossary entries based on terms recurring across this
+    tenant's existing memories. The admin reviews each suggestion and can
+    approve it in one click - the route doesn't auto-create memories.
+
+    Already-promoted terminology is filtered out: if a tenant already has an
+    active 'terminology' memory whose body matches the candidate term, the
+    suggestion is dropped so the list doesn't loop on itself.
+    """
+    effective_tenant = _resolve_target_tenant(who, tenant_id)
+    repo = get_tenant_memory_repository()
+    # All active memories feed extraction (terminology + preference + context).
+    active = repo.list_records(
+        tenant_id=effective_tenant, status="active", limit=10_000,
+    )
+    # Existing terminology bodies excluded so we don't re-suggest what's there.
+    excluded = [
+        r.get("body") for r in active
+        if r.get("kind") == "terminology" and r.get("body")
+    ]
+    candidates = extract_candidates(
+        active, min_count=min_count, exclude_terms=excluded,
+    )
+    payload = [
+        {"term": c.term, "count": c.count, "memory_ids": c.memory_ids}
+        for c in candidates[:limit]
+    ]
+    return {
+        "tenant_id": effective_tenant,
+        "candidates": payload,
+        "min_count": min_count,
+    }
 
 
 @router.get("/trend")

@@ -132,3 +132,15 @@ export interface MemoryTrend {
   weeks: number;
   series: MemoryTrendPoint[];
 }
+
+export interface GlossaryCandidate {
+  term: string;
+  count: number;
+  memory_ids: string[];
+}
+
+export interface GlossaryCandidates {
+  tenant_id: string;
+  candidates: GlossaryCandidate[];
+  min_count: number;
+}
