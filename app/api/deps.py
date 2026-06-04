@@ -1,7 +1,6 @@
 """Auth + tenant resolution dependencies (RBAC down to asset/function level)."""
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from collections.abc import Callable
 
@@ -11,8 +10,6 @@ from fastapi.concurrency import run_in_threadpool
 
 from app.config import get_settings
 from app.core import neon_auth
-
-logger = logging.getLogger("petrobrain.auth")
 
 
 VALID_ROLES = {"platform_admin", "admin", "engineer", "field", "hse"}
@@ -82,25 +79,15 @@ async def _neon_principal(token: str) -> Principal:
     resolution (a memberships table keyed by the Neon ``sub``) is a follow-up.
     """
     if not neon_auth.is_configured():
-        logger.warning("neon auth rejected: NEON_AUTH_BASE_URL is empty/unset")
         raise HTTPException(status_code=401, detail="invalid credentials")
     try:
         # JWKS fetch + verify is blocking; keep it off the event loop.
         claims = await run_in_threadpool(neon_auth.verify_neon_token, token)
     except Exception as exc:  # JWKS fetch / signature / expiry failure
-        # Diagnostic: surface *why* verification failed (exception type + message +
-        # the JWKS base actually used). No token/PII is logged. Remove once resolved.
-        logger.warning(
-            "neon token verify failed: %s: %s (jwks_base=%r)",
-            type(exc).__name__,
-            exc,
-            neon_auth._base_url(),
-        )
         raise HTTPException(status_code=401, detail="invalid credentials") from exc
 
     sub = claims.get("sub")
     if not isinstance(sub, str) or not sub.strip():
-        logger.warning("neon token accepted by JWKS but has no usable 'sub'; claim keys=%s", sorted(claims))
         raise HTTPException(status_code=401, detail="invalid credentials")
 
     settings = get_settings()
