@@ -392,6 +392,7 @@ class Orchestrator:
         # 2b. retrieval
         retrieved_text, retrieved_clauses = "", []
         retrieved_citations: list[dict[str, Any]] = []
+        retrieved_chunk_ids: list[int] = []
         if self.retriever is not None:
             hits = await self.retriever.retrieve(
                 user_text,
@@ -404,6 +405,13 @@ class Orchestrator:
             retrieved_citations = [
                 {"title": h.get("title"), "revision": h.get("revision"), "clause": h.get("clause")}
                 for h in hits
+            ]
+            # Slice 3: chunk ids for the retrieval re-ranking attribution.
+            # Surfaced via the audit dict so the route can push them into
+            # the turn_attribution cache without orchestrator knowing about
+            # the cache itself.
+            retrieved_chunk_ids = [
+                int(h["id"]) for h in hits if isinstance(h.get("id"), (int, float))
             ]
 
         # 3. system prompt
@@ -568,6 +576,10 @@ class Orchestrator:
             "tenant_id": tenant_id, "module": module, "model": resp.model,
             "usage": resp.usage, "n_tool_calls": len(tool_results),
             "retrieved_clauses": retrieved_clauses, "flags": flags,
+            # Slice 3: chunk ids retrieved for this turn. The route reads
+            # this and pushes (tenant, turn_id, chunk_ids) into the
+            # turn-attribution cache so feedback can later move weights.
+            "retrieved_chunk_ids": retrieved_chunk_ids,
         }
         evidence_pack = self._evidence_pack(
             citations=retrieved_citations,
@@ -634,6 +646,7 @@ class Orchestrator:
         )
 
         retrieved_text, retrieved_clauses, retrieved_citations = "", [], []
+        retrieved_chunk_ids: list[int] = []
         if self.retriever is not None:
             hits = await self.retriever.retrieve(
                 user_text,
@@ -643,6 +656,9 @@ class Orchestrator:
             )
             retrieved_text = "\n\n".join(h["text"] for h in hits)
             retrieved_clauses = [h.get("clause") for h in hits if h.get("clause")]
+            retrieved_chunk_ids = [
+                int(h["id"]) for h in hits if isinstance(h.get("id"), (int, float))
+            ]
             for hit in hits:
                 citation = {
                     "title": hit.get("title"),
@@ -804,6 +820,8 @@ class Orchestrator:
             "usage": usage, "n_tool_calls": len(tool_results),
             "retrieved_clauses": retrieved_clauses, "flags": flags,
             "retrieved_citations": retrieved_citations,
+            # Slice 3: see handle() above.
+            "retrieved_chunk_ids": retrieved_chunk_ids,
         }
         evidence_pack = self._evidence_pack(
             citations=retrieved_citations,

@@ -78,6 +78,24 @@ class Settings(BaseSettings):
     tenant_memory_max_active: int = 20
     tenant_memory_max_total_chars: int = 2000
 
+    # --- Retrieval re-ranking (slice 3 of the learning loop) ----------------
+    chunk_weight_store_path: str = "data/tenant_chunk_weights.jsonl"
+    # Bounds on the multiplicative weight applied to fused scores. Floor is
+    # the load-bearing safety guarantee: even a chunk that has accumulated
+    # heavy negative feedback only loses 50% of its score and still surfaces.
+    chunk_weight_floor: float = 0.5
+    chunk_weight_ceiling: float = 1.5
+    # Per-event step sizes. Asymmetric: bad answers earn faster penalty than
+    # good answers earn boost so the system corrects from a single bad
+    # citation faster than it celebrates a single good one.
+    chunk_weight_up_step: float = 1.05
+    chunk_weight_down_step: float = 0.90
+    # TTL on the in-memory (tenant, turn_id) -> chunk_ids map. A feedback
+    # POST older than this loses the chunk attribution gracefully (no
+    # crash, just no weight update). Generous default; users rarely rate
+    # answers more than a day later.
+    chunk_attribution_ttl_seconds: int = 24 * 60 * 60
+
     # Async document ingestion (A5)
     object_store_backend: str = "s3"             # s3 (MinIO/AWS) | memory (tests)
     object_store_endpoint: str = "http://localhost:9000"   # MinIO local dev

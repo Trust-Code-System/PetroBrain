@@ -167,3 +167,69 @@ def test_admin_feedback_cross_tenant_blocked_for_tenant_admin(feedback_repo):
         headers=auth_headers(tenant_id="my-tenant", role="admin"),
     )
     assert r.status_code == 403
+
+
+# ---- slice 3: feedback POST also moves chunk weights -------------------
+
+def test_feedback_post_updates_chunk_weights_via_attribution(
+    feedback_repo, monkeypatch, tmp_path,
+):
+    """End-to-end: orchestrator remembers (tenant, turn) -> chunk_ids, the
+    feedback POST looks them up server-side and bumps the per-tenant
+    weights. The frontend never sends chunk_ids; that prevents a malicious
+    client from targeting arbitrary chunks (e.g. a safety SOP)."""
+    from app.core import turn_attribution
+    from app.db.chunk_weights_repository import LocalJsonChunkWeightsRepository
+
+    turn_attribution.reset_for_tests()
+    weights_repo = LocalJsonChunkWeightsRepository(tmp_path / "weights.jsonl")
+    monkeypatch.setattr(
+        "app.db.chunk_weights_repository.get_chunk_weights_repository",
+        lambda: weights_repo,
+    )
+
+    # Simulate the orchestrator finishing a turn that retrieved chunks 10 + 20.
+    turn_attribution.remember_turn_chunks(
+        tenant_id="t1", turn_id="T-XYZ", chunk_ids=[10, 20],
+    )
+
+    r = client.post(
+        "/chat/feedback",
+        headers=auth_headers(tenant_id="t1", user_id="u1"),
+        json={"turn_id": "T-XYZ", "rating": "down"},
+    )
+    assert r.status_code == 200
+
+    # Both chunks bumped per the policy (1.0 * 0.9 = 0.9).
+    weights = weights_repo.get_weights(tenant_id="t1", chunk_ids=[10, 20])
+    assert set(weights.keys()) == {10, 20}
+    assert all(0.85 < w < 0.95 for w in weights.values())
+
+
+def test_feedback_post_with_no_attribution_still_records_feedback(
+    feedback_repo, tmp_path, monkeypatch,
+):
+    """If the attribution cache lost the (tenant, turn) -> chunks mapping
+    (TTL expired, replica restarted, etc.), the feedback row still lands -
+    only the weight update is skipped. The audit signal is the load-bearing
+    part; the weight nudge is best-effort."""
+    from app.core import turn_attribution
+    from app.db.chunk_weights_repository import LocalJsonChunkWeightsRepository
+
+    turn_attribution.reset_for_tests()
+    weights_repo = LocalJsonChunkWeightsRepository(tmp_path / "weights.jsonl")
+    monkeypatch.setattr(
+        "app.db.chunk_weights_repository.get_chunk_weights_repository",
+        lambda: weights_repo,
+    )
+
+    r = client.post(
+        "/chat/feedback",
+        headers=auth_headers(tenant_id="t1", user_id="u1"),
+        json={"turn_id": "T-orphan", "rating": "up"},
+    )
+    assert r.status_code == 200
+    rows = feedback_repo.list_records(tenant_id="t1")
+    assert len(rows) == 1
+    # No chunks to update, so the weights store stays empty.
+    assert weights_repo.list_records(tenant_id="t1") == []

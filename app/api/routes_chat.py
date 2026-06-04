@@ -13,6 +13,8 @@ from app.core.audit import AuditEvent, get_audit_logger
 from app.core.audit_hash import sha256_canonical
 from app.core.observability import increment_token_cost_counters, record_chat_turn
 from app.core.orchestrator import Orchestrator, Turn
+from app.core import turn_attribution
+from app.core.chunk_weight_updater import update_weights_from_feedback
 from app.db.audit_events_repository import get_audit_events_repository
 from app.db.feedback_repository import VALID_RATINGS, get_feedback_repository
 from app.models.schemas import (
@@ -134,6 +136,14 @@ def _finalize_chat_turn(*, req: ChatRequest, turn: Turn, who: Principal,
         # turn_id is the joining key for any feedback the user later sends.
         metadata={**(turn.audit or {}), "turn_id": turn_id},
     ))
+    # Slice 3: remember which chunks fed this turn so a later 👍/👎 can move
+    # weights against them. Safe to call with [] - the helper short-circuits.
+    chunk_ids = (turn.audit or {}).get("retrieved_chunk_ids") or []
+    if isinstance(chunk_ids, list):
+        turn_attribution.remember_turn_chunks(
+            tenant_id=who.tenant_id, turn_id=turn_id,
+            chunk_ids=[int(c) for c in chunk_ids if isinstance(c, (int, float))],
+        )
     _record_audit_events(req=req, turn=turn, who=who)
     usage = (turn.audit or {}).get("usage") or {}
     model = str((turn.audit or {}).get("model") or "unknown")
@@ -247,6 +257,15 @@ async def submit_feedback(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    # Slice 3: propagate the rating to per-tenant chunk weights for any
+    # chunks the orchestrator actually retrieved for this turn. The lookup
+    # is server-side (turn_attribution cache) so a malicious client can't
+    # target arbitrary chunk_ids. Errors here are non-fatal - the feedback
+    # row is already persisted.
+    chunks_updated = update_weights_from_feedback(
+        tenant_id=who.tenant_id, turn_id=req.turn_id, rating=rating,
+    )
+
     audit_logger.write(AuditEvent(
         event_type="chat_feedback",
         tenant_id=who.tenant_id,
@@ -254,7 +273,7 @@ async def submit_feedback(
         role=who.role,
         route="/chat/feedback",
         request={"turn_id": req.turn_id, "rating": rating, "has_reason": bool(reason)},
-        response={"feedback_id": record.id},
+        response={"feedback_id": record.id, "chunks_updated": chunks_updated},
         metadata={"module": req.module},
     ))
     return FeedbackResponse(
