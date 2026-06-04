@@ -175,7 +175,8 @@ export function ComposerMenu({
               <Section title="Capabilities">
                 <Row
                   icon={<TaskIcon />}
-                  label="Create task"
+                  label="Task template"
+                  hint="Inserts a fill-in-the-blanks brief"
                   onClick={() => {
                     onApplyPrompt(CREATE_TASK_PROMPT);
                     setForceCanvasNext(true);
@@ -184,7 +185,8 @@ export function ComposerMenu({
                 />
                 <Row
                   icon={<ResearchIcon />}
-                  label="Deep research"
+                  label="Deep research mode"
+                  hint="Web search + extended thinking + canvas"
                   onClick={() => {
                     setWebSearchEnabled(true);
                     setThinkingMode('extended');
@@ -431,7 +433,7 @@ function ToggleRow({
     <li>
       <button
         type="button"
-        aria-pressed={checked}
+        aria-pressed={checked ? 'true' : 'false'}
         onClick={onChange}
         className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-800/60"
       >
