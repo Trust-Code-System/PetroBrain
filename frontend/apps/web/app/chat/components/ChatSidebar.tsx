@@ -144,15 +144,11 @@ function ConversationsList() {
   const renameConversation = useConversationsStore((s) => s.renameConversation);
   const pinConversation = useConversationsStore((s) => s.pinConversation);
   const archiveConversation = useConversationsStore((s) => s.archiveConversation);
-  const setGroupMembers = useConversationsStore((s) => s.setGroupMembers);
-
   const [query, setQuery] = useState('');
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [filesFor, setFilesFor] = useState<string | null>(null);
-  const [groupFor, setGroupFor] = useState<string | null>(null);
-  const [groupDraft, setGroupDraft] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -218,27 +214,8 @@ function ConversationsList() {
     setRenaming(null);
   }
 
-  function openGroupDialog(id: string) {
-    const convo = conversations[id];
-    setGroupDraft((convo?.groupMembers ?? []).join(', '));
-    setGroupFor(id);
-    setOpenMenu(null);
-  }
-
-  function commitGroup() {
-    if (!groupFor) return;
-    const members = groupDraft
-      .split(/[,\n]/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-    setGroupMembers(groupFor, Array.from(new Set(members)));
-    setGroupFor(null);
-    setGroupDraft('');
-  }
-
   const fileConversation = filesFor ? conversations[filesFor] : null;
   const uploadedFiles = collectChatFiles(fileConversation);
-  const groupConversation = groupFor ? conversations[groupFor] : null;
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-2.5">
@@ -337,18 +314,11 @@ function ConversationsList() {
                           title={c.title}
                         >
                           <span className="block truncate">{c.title}</span>
-                          {c.pinned || (c.groupMembers?.length ?? 0) > 0 ? (
+                          {c.pinned ? (
                             <span className="mt-0.5 flex items-center gap-1">
-                              {c.pinned ? (
-                                <span className="rounded-full bg-primary-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
-                                  Pinned
-                                </span>
-                              ) : null}
-                              {(c.groupMembers?.length ?? 0) > 0 ? (
-                                <span className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
-                                  Group
-                                </span>
-                              ) : null}
+                              <span className="rounded-full bg-primary-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
+                                Pinned
+                              </span>
                             </span>
                           ) : null}
                           {c.snippet ? (
@@ -380,11 +350,6 @@ function ConversationsList() {
                           ref={menuRef}
                           className="absolute right-1 top-9 z-40 w-64 overflow-hidden rounded-3xl border border-neutral-200 bg-white py-2 shadow-[0_24px_60px_-18px_rgba(15,23,42,0.32),0_8px_18px_-8px_rgba(15,23,42,0.18)] dark:border-neutral-700 dark:bg-neutral-900"
                         >
-                          <ConversationAction
-                            icon="group"
-                            label={(c.groupMembers?.length ?? 0) > 0 ? 'Manage group chat' : 'Start a group chat'}
-                            onClick={() => openGroupDialog(c.id)}
-                          />
                           <ConversationAction
                             icon="files"
                             label="View files in chat"
@@ -489,50 +454,6 @@ function ConversationsList() {
         </SidebarDialog>
       ) : null}
 
-      {groupFor ? (
-        <SidebarDialog
-          title={(groupConversation?.groupMembers?.length ?? 0) > 0 ? 'Manage group chat' : 'Start a group chat'}
-          description={groupConversation?.title ?? 'Add collaborators'}
-          onClose={() => {
-            setGroupFor(null);
-            setGroupDraft('');
-          }}
-        >
-          <label htmlFor="group-members" className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500 dark:text-neutral-400">
-            Members
-          </label>
-          <textarea
-            id="group-members"
-            value={groupDraft}
-            onChange={(e) => setGroupDraft(e.target.value)}
-            rows={4}
-            placeholder="name@company.com, teammate@company.com"
-            className="mt-2 w-full resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition focus:border-primary-400 focus:ring-2 focus:ring-primary-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100 dark:focus:border-primary-500 dark:focus:ring-primary-900"
-          />
-          <p className="mt-2 text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
-            Group membership is saved on this chat so you can track who the thread is meant for. Shared real-time editing still uses the existing share link flow.
-          </p>
-          <div className="mt-4 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setGroupFor(null);
-                setGroupDraft('');
-              }}
-              className="rounded-xl px-3 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={commitGroup}
-              className="rounded-xl bg-gradient-to-b from-primary-500 to-primary-700 px-3 py-2 text-sm font-semibold text-white shadow-[0_8px_18px_-8px_rgba(234,88,12,0.6)] hover:from-primary-400 hover:to-primary-600"
-            >
-              Save group
-            </button>
-          </div>
-        </SidebarDialog>
-      ) : null}
     </section>
   );
 }
@@ -542,7 +463,7 @@ function ConversationAction({
   label,
   onClick,
 }: {
-  icon: 'group' | 'files' | 'pin' | 'archive';
+  icon: 'files' | 'pin' | 'archive';
   label: string;
   onClick: () => void;
 }) {
@@ -558,15 +479,7 @@ function ConversationAction({
   );
 }
 
-function ActionIcon({ kind }: { kind: 'group' | 'files' | 'pin' | 'archive' }) {
-  if (kind === 'group') {
-    return (
-      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
-        <circle cx="8" cy="6.5" r="3" stroke="currentColor" strokeWidth="1.7" />
-        <path d="M2.8 17c.7-3.2 2.8-5 5.2-5s4.5 1.8 5.2 5M15 7v5M12.5 9.5h5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-      </svg>
-    );
-  }
+function ActionIcon({ kind }: { kind: 'files' | 'pin' | 'archive' }) {
   if (kind === 'files') {
     return (
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
