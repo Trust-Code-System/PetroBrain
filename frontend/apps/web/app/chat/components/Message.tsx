@@ -6,7 +6,11 @@ import clsx from 'clsx';
 import { Banner, Badge, Logo } from '@petrobrain/ui';
 import type { Citation } from '@petrobrain/types';
 
-import type { AssistantMessage, Message as MessageType } from '@/lib/chat/types';
+import type {
+  AssistantMessage,
+  FeedbackRating,
+  Message as MessageType,
+} from '@/lib/chat/types';
 import { isCanvasWorthy } from '@/lib/chat/canvas';
 
 import { Markdown } from './Markdown';
@@ -28,9 +32,12 @@ export interface MessageProps {
   onRegenerate?: (assistantMessageId: string) => void;
   onOpenCanvas?: (assistantMessageId: string) => void;
   canvasMessageId?: string | null;
+  onFeedback?: (assistantMessageId: string, rating: FeedbackRating, reason?: string | null) => void;
 }
 
-export function Message({ message, onRegenerate, onOpenCanvas, canvasMessageId }: MessageProps) {
+export function Message({
+  message, onRegenerate, onOpenCanvas, canvasMessageId, onFeedback,
+}: MessageProps) {
   if (message.role === 'user') return <UserMessageView message={message} />;
   return (
     <AssistantMessageView
@@ -38,6 +45,7 @@ export function Message({ message, onRegenerate, onOpenCanvas, canvasMessageId }
       {...(onRegenerate ? { onRegenerate } : {})}
       {...(onOpenCanvas ? { onOpenCanvas } : {})}
       {...(canvasMessageId !== undefined ? { canvasMessageId } : {})}
+      {...(onFeedback ? { onFeedback } : {})}
     />
   );
 }
@@ -102,11 +110,13 @@ function AssistantMessageView({
   onRegenerate,
   onOpenCanvas,
   canvasMessageId,
+  onFeedback,
 }: {
   message: AssistantMessage;
   onRegenerate?: (assistantMessageId: string) => void;
   onOpenCanvas?: (assistantMessageId: string) => void;
   canvasMessageId?: string | null;
+  onFeedback?: (assistantMessageId: string, rating: FeedbackRating, reason?: string | null) => void;
 }) {
   const safetyToolResult = message.toolResults.find(
     (tr) =>
@@ -185,6 +195,10 @@ function AssistantMessageView({
               text={message.text}
               messageId={message.id}
               {...(onRegenerate ? { onRegenerate } : {})}
+            />
+            <FeedbackChips
+              message={message}
+              {...(onFeedback ? { onFeedback } : {})}
             />
             {onOpenCanvas && isCanvasWorthy(message) && canvasMessageId !== message.id ? (
               <button
@@ -569,6 +583,123 @@ function ThumbsDownIcon({ filled }: { filled?: boolean }) {
         strokeLinecap="round"
       />
     </svg>
+  );
+}
+
+/**
+ * Thumbs-up / thumbs-down chips next to the assistant toolbar. Clicking a
+ * thumb posts feedback immediately (optimistic). Clicking thumbs-down also
+ * opens a tiny reason input so the user can explain in <= a sentence.
+ * Re-clicking the same thumb leaves the rating in place (server upsert is
+ * idempotent); the user can swap thumbs to flip their rating.
+ *
+ * Disabled (and visually muted) when the message has no turnId - that's an
+ * older message persisted before the feature shipped, with nothing on the
+ * server to attach feedback to.
+ */
+function FeedbackChips({
+  message,
+  onFeedback,
+}: {
+  message: AssistantMessage;
+  onFeedback?: (assistantMessageId: string, rating: FeedbackRating, reason?: string | null) => void;
+}) {
+  const [reasonOpen, setReasonOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const sentRating = message.feedback?.rating;
+  const disabled = !message.turnId || !onFeedback;
+
+  function rate(rating: FeedbackRating) {
+    if (disabled || !onFeedback) return;
+    if (rating === 'down') {
+      // Open the reason input on the first thumbs-down click. The rating is
+      // still posted right away so a closed reason box still records the
+      // signal; the textarea is optional context.
+      setReasonOpen(true);
+    } else {
+      setReasonOpen(false);
+    }
+    onFeedback(message.id, rating, null);
+  }
+
+  function submitReason() {
+    if (disabled || !onFeedback) return;
+    const trimmed = reason.trim();
+    onFeedback(message.id, 'down', trimmed || null);
+    setReasonOpen(false);
+    setReason('');
+  }
+
+  const chip = (active: boolean) =>
+    clsx(
+      'inline-flex h-7 items-center justify-center rounded-full border px-2 transition-all',
+      disabled
+        ? 'cursor-not-allowed border-neutral-200 text-neutral-300 dark:border-neutral-800 dark:text-neutral-700'
+        : active
+          ? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-primary-600 dark:bg-primary-900/30 dark:text-primary-300'
+          : 'border-neutral-200/80 bg-white text-neutral-500 hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-400 dark:hover:border-primary-600 dark:hover:bg-primary-900/30 dark:hover:text-primary-300',
+    );
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          aria-label="Good answer"
+          title={disabled ? 'Feedback unavailable for this message' : 'Mark this answer as helpful'}
+          disabled={disabled}
+          onClick={() => rate('up')}
+          className={chip(sentRating === 'up')}
+        >
+          <ThumbsUpIcon filled={sentRating === 'up'} />
+        </button>
+        <button
+          type="button"
+          aria-label="Bad answer"
+          title={disabled ? 'Feedback unavailable for this message' : 'Mark this answer as incorrect or unhelpful'}
+          disabled={disabled}
+          onClick={() => rate('down')}
+          className={chip(sentRating === 'down')}
+        >
+          <ThumbsDownIcon filled={sentRating === 'down'} />
+        </button>
+      </div>
+      {reasonOpen ? (
+        <div className="flex flex-col gap-1.5 rounded-md border border-neutral-200/80 bg-white p-2 dark:border-neutral-700 dark:bg-neutral-900">
+          <label htmlFor={`fb-reason-${message.id}`} className="text-[10px] uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
+            What was wrong? (optional)
+          </label>
+          <textarea
+            id={`fb-reason-${message.id}`}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={2}
+            maxLength={2000}
+            placeholder="e.g. wrong clause cited, unit conversion off by 10x, missing safety banner…"
+            className="resize-none border-0 bg-transparent p-0 text-[12px] text-neutral-700 placeholder:text-neutral-400 focus:outline-none focus:ring-0 dark:text-neutral-200 dark:placeholder:text-neutral-500"
+          />
+          <div className="flex items-center justify-end gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setReasonOpen(false);
+                setReason('');
+              }}
+              className="rounded-md px-2 py-1 text-[11px] font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
+            >
+              Skip
+            </button>
+            <button
+              type="button"
+              onClick={submitReason}
+              className="rounded-md bg-primary-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-primary-700"
+            >
+              Send
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

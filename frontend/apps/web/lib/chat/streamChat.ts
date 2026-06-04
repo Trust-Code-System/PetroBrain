@@ -34,6 +34,8 @@ export type StreamEvent =
         flags: string[];
         audit: Record<string, unknown>;
         evidence_pack?: EvidencePack;
+        /** Server-minted id for this turn; key for POST /chat/feedback. */
+        turn_id?: string;
       };
     };
 

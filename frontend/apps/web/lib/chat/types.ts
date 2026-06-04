@@ -38,6 +38,18 @@ export interface UserMessage {
   createdAt: number;
 }
 
+export type FeedbackRating = 'up' | 'down';
+
+/** Local-first feedback state per assistant turn. Persisted alongside the
+ *  message in localStorage so a refresh doesn't ask the user to re-rate.
+ *  The server is the source of truth (POST /chat/feedback returns the row),
+ *  but we render optimistically. */
+export interface MessageFeedback {
+  rating: FeedbackRating;
+  reason?: string | null;
+  sentAt: number;
+}
+
 export interface AssistantMessage {
   id: string;
   role: 'assistant';
@@ -49,6 +61,10 @@ export interface AssistantMessage {
   streaming: boolean;
   error?: string;
   createdAt: number;
+  /** Server-minted turn id. Used as the key when posting feedback. May be
+   *  missing on older messages persisted before this feature shipped. */
+  turnId?: string;
+  feedback?: MessageFeedback | null;
 }
 
 export type Message = UserMessage | AssistantMessage;

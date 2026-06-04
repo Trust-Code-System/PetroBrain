@@ -50,6 +50,26 @@ class ChatResponse(BaseModel):
     flags: list[str] = Field(default_factory=list)
     citations: list[dict[str, Any]] = Field(default_factory=list)
     evidence_pack: dict[str, Any] = Field(default_factory=dict)
+    # Stable server-minted ID for this turn. The frontend stores it on the
+    # assistant message and uses it when the user clicks the feedback chip.
+    # Same id is written to the audit row's metadata so feedback can be
+    # joined to the underlying request_hash + retrieved_clauses later.
+    turn_id: str = ""
+
+
+class FeedbackRequest(BaseModel):
+    turn_id: str
+    rating: str  # "up" | "down"
+    reason: str | None = None
+    module: str | None = None
+
+
+class FeedbackResponse(BaseModel):
+    id: str
+    turn_id: str
+    rating: str
+    reason: str | None = None
+    created_utc: str
 
 
 class KillSheetRequest(BaseModel):

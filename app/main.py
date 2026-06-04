@@ -12,6 +12,7 @@ from app.api import (
     routes_admin_audit,
     routes_admin_data_readiness,
     routes_admin_documents,
+    routes_admin_feedback,
     routes_admin_permits,
     routes_admin_tenants,
     routes_admin_users,
@@ -97,6 +98,7 @@ app.include_router(routes_admin_tenants.router)
 app.include_router(routes_admin_users.router)
 app.include_router(routes_admin_data_readiness.router)
 app.include_router(routes_admin_permits.router)
+app.include_router(routes_admin_feedback.router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 

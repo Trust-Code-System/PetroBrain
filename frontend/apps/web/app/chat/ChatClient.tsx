@@ -12,6 +12,7 @@ import { isCanvasWorthy } from '@/lib/chat/canvas';
 import { useProjectsStore } from '@/lib/chat/projects';
 import { useSettingsStore } from '@/lib/chat/settings';
 import { streamChat, type StreamEvent } from '@/lib/chat/streamChat';
+import { submitFeedback } from '@/lib/chat/feedback';
 
 import { AuthGate } from './components/AuthGate';
 import { CanvasPanel } from './components/CanvasPanel';
@@ -20,7 +21,12 @@ import { ChatSidebar } from './components/ChatSidebar';
 import { EmptyState } from './components/EmptyState';
 import { MessageList } from './components/MessageList';
 import { ModulePill } from './components/ModulePill';
-import type { AssistantMessage, Message, MessageAttachment } from '@/lib/chat/types';
+import type {
+  AssistantMessage,
+  FeedbackRating,
+  Message,
+  MessageAttachment,
+} from '@/lib/chat/types';
 
 let messageCounter = 0;
 function nextId(prefix: string): string {
@@ -367,6 +373,49 @@ export function ChatClient() {
     [activeId, conversations, ownerKey, send, sending, setMessagesInStore],
   );
 
+  const sendFeedback = useCallback(
+    (assistantMessageId: string, rating: FeedbackRating, reason?: string | null) => {
+      if (!token) return;
+      const convoId = activeId;
+      if (!convoId) return;
+      const convo = conversations[convoId];
+      if (!convo || convo.ownerKey !== ownerKey) return;
+      const msg = convo.messages.find(
+        (m): m is AssistantMessage => m.id === assistantMessageId && m.role === 'assistant',
+      );
+      if (!msg?.turnId) return;
+      // Optimistic local update so the chip lights up before the network call
+      // returns. If the POST fails we leave the optimistic state in place -
+      // the server is idempotent on (tenant, user, turn), so a retry just
+      // overwrites. A surfaced error here would be more confusing than
+      // helpful for a thumbs-up.
+      const optimistic = convo.messages.map((m) =>
+        m.id === assistantMessageId && m.role === 'assistant'
+          ? {
+              ...m,
+              feedback: {
+                rating,
+                reason: reason ?? null,
+                sentAt: Date.now(),
+              },
+            }
+          : m,
+      );
+      setMessagesInStore(convoId, optimistic, ownerKey);
+      void submitFeedback({
+        baseUrl: apiBaseUrl,
+        token,
+        turnId: msg.turnId,
+        rating,
+        reason: reason ?? null,
+        module: msg.toolResults[0]?.tool ? null : module,
+      }).catch(() => {
+        // Silent: the rating chip stays lit; the user can re-click to retry.
+      });
+    },
+    [activeId, apiBaseUrl, conversations, module, ownerKey, setMessagesInStore, token],
+  );
+
   // Abort the in-flight stream when ChatClient unmounts so a closed-tab race
   // doesn't leave a hanging fetch. We intentionally do NOT abort on activeId
   // changes: the very first send in a fresh chat goes null -> new-id mid-send,
@@ -608,6 +657,7 @@ export function ChatClient() {
               onRegenerate={regenerate}
               onOpenCanvas={openCanvas}
               canvasMessageId={canvasMessageId}
+              onFeedback={sendFeedback}
             />
           )}
         </div>
@@ -663,15 +713,20 @@ export function applyEvent(
         return m.flags.includes(event.data.flag)
           ? m
           : { ...m, flags: [...m.flags, event.data.flag] };
-      case 'done':
-        return {
+      case 'done': {
+        // Only spread turnId when we actually got one - strict optional-
+        // property typing rejects an explicit `undefined` assignment.
+        const resolvedTurnId = event.data.turn_id ?? m.turnId;
+        const base = {
           ...m,
           text: event.data.answer || m.text,
           toolResults: (event.data.tool_results as ToolResult[]) ?? m.toolResults,
           evidencePack: event.data.evidence_pack ?? m.evidencePack,
           flags: event.data.flags ?? m.flags,
-          streaming: false,
+          streaming: false as const,
         };
+        return resolvedTurnId ? { ...base, turnId: resolvedTurnId } : base;
+      }
       default:
         return m;
     }

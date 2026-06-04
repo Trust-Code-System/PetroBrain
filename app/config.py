@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     users_store_path: str = "data/users.jsonl"
     permits_store_path: str = "data/permits.jsonl"
     conversation_shares_store_path: str = "data/conversation_shares.jsonl"
+    feedback_store_path: str = "data/feedback_events.jsonl"
 
     # Async document ingestion (A5)
     object_store_backend: str = "s3"             # s3 (MinIO/AWS) | memory (tests)
