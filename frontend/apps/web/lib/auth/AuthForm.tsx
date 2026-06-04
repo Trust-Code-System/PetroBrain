@@ -68,8 +68,8 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // Surfaces "waking the backend..." after a few seconds of busy so the user
-  // knows we're not silently hung on a Render cold start.
+  // Surfaces a neutral progress note after a few seconds of busy so the user
+  // knows the sign-in request is still in progress.
   const [slow, setSlow] = useState(false);
   const slowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -104,9 +104,8 @@ export function AuthForm({ mode }: AuthFormProps) {
     setError(null);
     setBusy(true);
     setSlow(false);
-    // Cold-start guard: tell the user we're waking the backend after a short
-    // delay, and hard-abort the request after 60 seconds so the form can never
-    // sit on "Signing in..." indefinitely.
+    // Long-request guard: show a neutral status after a short delay, and
+    // hard-abort after 60 seconds so the form can never sit indefinitely.
     slowTimerRef.current = setTimeout(() => setSlow(true), 6000);
     const controller = new AbortController();
     const abortTimer = setTimeout(() => controller.abort(), 60_000);
@@ -126,9 +125,9 @@ export function AuthForm({ mode }: AuthFormProps) {
       if (err instanceof AuthError) {
         setError(err.message);
       } else if ((err as { name?: string }).name === 'AbortError') {
-        setError("The backend didn't respond in 60 seconds. It may be waking up - wait a moment and try again.");
+        setError('Sign-in took too long. Please wait a moment and try again.');
       } else {
-        setError('Could not reach the backend. Check your connection and try again.');
+        setError('Could not complete sign-in. Check your connection and try again.');
       }
       setBusy(false);
       setSlow(false);
@@ -275,7 +274,7 @@ export function AuthForm({ mode }: AuthFormProps) {
               aria-live="polite"
               className="text-center text-[11px] text-neutral-500 dark:text-neutral-400"
             >
-              Waking the backend - first request after idle can take ~30 seconds.
+              Still signing you in. This can take a moment.
             </p>
           ) : null}
 

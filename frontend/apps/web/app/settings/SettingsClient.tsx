@@ -630,7 +630,7 @@ export function SettingsClient() {
 
             {section === 'account' ? (
               <>
-                <SectionHeader title="Account" subtitle="Backend endpoint and sign-out." />
+                <SectionHeader title="Account" subtitle="Connection and sign-out." />
                 <Field
                   label="API base URL"
                   description="Where the chat surface posts to. Read-only - set via the host."
