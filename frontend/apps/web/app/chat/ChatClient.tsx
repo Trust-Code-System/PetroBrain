@@ -718,6 +718,7 @@ export function ChatClient() {
           url={shareStatus.url}
           expiresUtc={shareStatus.expiresUtc}
           copied={shareStatus.copied}
+          snippet={deriveShareSnippet(messages)}
           onCopy={() => void copyShareLink(shareStatus.url)}
           onClose={closeShareModal}
         />
@@ -741,6 +742,7 @@ function ShareDialog({
   url,
   expiresUtc,
   copied,
+  snippet,
   onCopy,
   onClose,
 }: {
@@ -748,26 +750,35 @@ function ShareDialog({
   url: string;
   expiresUtc: string;
   copied: boolean;
+  /** A short preview of the conversation (first user prompt) so the share
+   *  card shows what the receiver is about to open, not just the title. */
+  snippet: string;
   onCopy: () => void;
   onClose: () => void;
 }) {
   const encodedUrl = encodeURIComponent(url);
   const encodedTitle = encodeURIComponent(title);
-  const shareTargets = [
+  // B2B share targets - Reddit / X don't fit an oil & gas operator product;
+  // Email + LinkedIn match how operators actually circulate notes (and a
+  // mailto: works on every device without OAuth).
+  const emailSubject = encodeURIComponent(`PetroBrain conversation: ${title}`);
+  const emailBody = encodeURIComponent(
+    `${title}\n\nOpen in PetroBrain (read-only, expires ${new Date(expiresUtc).toLocaleDateString()}):\n${url}\n`,
+  );
+  const shareTargets: {
+    label: string;
+    href: string;
+    icon: 'email' | 'linkedin';
+  }[] = [
     {
-      label: 'X',
-      href: `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedTitle}`,
-      icon: 'X',
+      label: 'Email',
+      href: `mailto:?subject=${emailSubject}&body=${emailBody}`,
+      icon: 'email',
     },
     {
       label: 'LinkedIn',
-      href: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`,
-      icon: 'in',
-    },
-    {
-      label: 'Reddit',
-      href: `https://www.reddit.com/submit?url=${encodedUrl}&title=${encodedTitle}`,
-      icon: 'r',
+      href: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}&title=${encodedTitle}`,
+      icon: 'linkedin',
     },
   ];
 
@@ -806,15 +817,22 @@ function ShareDialog({
             <div className="inline-flex items-center gap-2 rounded-full bg-primary-500/15 px-3 py-1 text-xs font-semibold text-primary-200 ring-1 ring-primary-400/20">
               PetroBrain
             </div>
-            <div className="mt-14 max-w-[80%] rounded-2xl bg-neutral-800/95 px-4 py-3 shadow-2xl">
+            <div className="mt-10 max-w-[80%] rounded-2xl bg-neutral-800/95 px-4 py-3 shadow-2xl">
               <p className="line-clamp-2 text-lg font-semibold leading-snug">{title}</p>
-              <p className="mt-2 text-sm text-neutral-400">Read-only conversation snapshot</p>
+              {snippet ? (
+                <p className="mt-1.5 line-clamp-2 text-xs text-neutral-300">
+                  {snippet}
+                </p>
+              ) : null}
+              <p className="mt-2 text-[11px] uppercase tracking-[0.08em] text-neutral-500">
+                Read-only · expires {new Date(expiresUtc).toLocaleDateString()}
+              </p>
             </div>
             <div className="absolute bottom-4 right-5 text-xl font-bold tracking-tight">PetroBrain</div>
           </div>
         </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="mt-6 grid grid-cols-3 gap-3">
           <button
             type="button"
             onClick={onCopy}
@@ -837,12 +855,12 @@ function ShareDialog({
             <a
               key={target.label}
               href={target.href}
-              target="_blank"
+              target={target.icon === 'email' ? undefined : '_blank'}
               rel="noopener noreferrer"
               className="flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-white px-3 py-4 text-neutral-950 transition hover:bg-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
             >
-              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-neutral-950 text-lg font-bold text-white">
-                {target.icon}
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-neutral-950 text-white">
+                <ShareTargetIcon kind={target.icon} />
               </span>
               <span className="text-sm font-medium">{target.label}</span>
             </a>
@@ -851,6 +869,38 @@ function ShareDialog({
       </div>
     </div>
   );
+}
+
+function ShareTargetIcon({ kind }: { kind: 'email' | 'linkedin' }) {
+  if (kind === 'email') {
+    return (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
+        <rect x="2.5" y="4.5" width="15" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M3 5.5l7 5 7-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  // LinkedIn glyph (the "in" mark).
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+      <rect x="2.5" y="2.5" width="15" height="15" rx="2" fill="currentColor" opacity="0" />
+      <path d="M4.5 7.5h2v8h-2v-8zm1-3.2a1.15 1.15 0 110 2.3 1.15 1.15 0 010-2.3zM8.5 7.5h1.9v1.1c.27-.51 1.1-1.2 2.3-1.2 2.46 0 2.8 1.6 2.8 3.7v4.4h-2v-3.9c0-.93-.02-2.13-1.3-2.13-1.3 0-1.5 1.02-1.5 2.07v3.96h-2v-8z" />
+    </svg>
+  );
+}
+
+/**
+ * Pull a short, human-meaningful preview from a conversation - the first
+ * user prompt, trimmed to a single line. Used by the share dialog's preview
+ * card so the receiver knows what they're about to open.
+ */
+function deriveShareSnippet(messages: Message[]): string {
+  for (const m of messages) {
+    if (m.role === 'user' && m.text.trim()) {
+      return m.text.trim().split(/\s*\n\s*/, 1)[0]!.slice(0, 220);
+    }
+  }
+  return '';
 }
 
 /**
