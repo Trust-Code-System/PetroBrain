@@ -138,10 +138,15 @@ function LearningView({
     queryFn: ({ signal }) =>
       getGlossaryCandidates({ ...auth, signal, minCount: 2 }),
   });
+  // Errors are the only section that polls aggressively (8s vs the rest at
+  // staleTime 30s default) - the user wants "no delays" so admins see live
+  // failures in seconds, not minutes. Polling pauses while the tab is
+  // hidden so a background tab isn't hammering the API.
   const errors = useQuery({
     queryKey: ['admin-learning', 'errors'],
     queryFn: ({ signal }) => listErrors({ ...auth, signal, limit: 25 }),
-    refetchInterval: 30_000,
+    refetchInterval: 8_000,
+    refetchIntervalInBackground: false,
   });
 
   // If anything came back with a SessionExpiredError, clear the session
