@@ -106,6 +106,7 @@ def _mint_for(record: dict) -> str:
     return mint_jwt(
         tenant_id=record["tenant_id"],
         user_id=record["id"],
+        email=record.get("email"),
         role=record["role"],
         allowed_assets=list(record.get("allowed_assets") or []),
         secret=settings.jwt_secret,

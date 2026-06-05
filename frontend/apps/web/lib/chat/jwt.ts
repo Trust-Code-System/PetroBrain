@@ -14,12 +14,14 @@ export function decodePrincipal(token: string | null): Principal | null {
     if (typeof payload !== 'object' || payload === null) return null;
     const tenantId = stringClaim(payload, 'tenant_id');
     const userId = stringClaim(payload, 'user_id') ?? stringClaim(payload, 'sub');
+    const email = stringClaim(payload, 'email');
     const role = stringClaim(payload, 'role');
     const allowed = (payload as Record<string, unknown>).allowed_assets;
     if (!tenantId || !userId || !isRole(role)) return null;
     return {
       tenantId,
       userId,
+      ...(email ? { email } : {}),
       role,
       allowedAssets: Array.isArray(allowed) ? allowed.filter((x): x is string => typeof x === 'string') : [],
     };

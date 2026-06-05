@@ -237,7 +237,7 @@ export const Select = forwardRef<SelectRef, SelectProps>(function Select(
             ref={popoverRef}
             tabIndex={-1}
             onKeyDown={onListKeyDown}
-            className="absolute left-0 right-0 top-[calc(100%+6px)] z-30 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-[0_18px_40px_-12px_rgba(15,23,42,0.18),0_4px_10px_-2px_rgba(15,23,42,0.08)] focus:outline-none dark:border-neutral-700 dark:bg-neutral-900"
+            className="absolute left-0 right-0 top-[calc(100%+6px)] z-[70] overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-[0_18px_40px_-12px_rgba(15,23,42,0.18),0_4px_10px_-2px_rgba(15,23,42,0.08)] focus:outline-none dark:border-neutral-700 dark:bg-neutral-900"
           >
             <ul
               id={listboxId}

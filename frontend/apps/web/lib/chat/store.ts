@@ -5,6 +5,14 @@ import type { Module, Principal } from '@petrobrain/types';
 
 import { decodePrincipal } from './jwt.js';
 
+interface PrincipalPayload {
+  user_id: string;
+  tenant_id: string;
+  role: Principal['role'];
+  email?: string;
+  allowed_assets?: string[];
+}
+
 export type ThinkingMode = 'instant' | 'default' | 'extended';
 
 /**
@@ -60,7 +68,7 @@ interface ChatStoreState {
    * suddenly have to re-authenticate. Cleared on successful sign-in.
    */
   sessionExpiredReason: 'expired' | 'revoked' | 'invalid' | null;
-  setToken: (token: string | null) => void;
+  setToken: (token: string | null, principal?: PrincipalPayload | null) => void;
   setModule: (m: Module) => void;
   setAssetContext: (asset: string | null) => void;
   setThinkingMode: (m: ThinkingMode) => void;
@@ -96,7 +104,11 @@ export const useChatStore = create<ChatStoreState>()(
       sidebarCollapsed: false,
       hasHydrated: false,
       sessionExpiredReason: null,
-      setToken: (token) => set({ token, principal: decodePrincipal(token) }),
+      setToken: (token, principalPayload) =>
+        set({
+          token,
+          principal: principalPayload ? principalFromPayload(principalPayload) : decodePrincipal(token),
+        }),
       setModule: (module) => set({ module }),
       setAssetContext: (assetContext) => set({ assetContext }),
       setThinkingMode: (thinkingMode) => set({ thinkingMode }),
@@ -144,3 +156,15 @@ export const useChatStore = create<ChatStoreState>()(
     },
   ),
 );
+
+function principalFromPayload(payload: PrincipalPayload): Principal {
+  return {
+    tenantId: payload.tenant_id,
+    userId: payload.user_id,
+    ...(payload.email ? { email: payload.email } : {}),
+    role: payload.role,
+    allowedAssets: Array.isArray(payload.allowed_assets)
+      ? payload.allowed_assets.filter((x): x is string => typeof x === 'string')
+      : [],
+  };
+}

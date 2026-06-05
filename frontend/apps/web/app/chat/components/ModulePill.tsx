@@ -118,7 +118,7 @@ export function ModulePill() {
         <div
           role="dialog"
           aria-label="Conversation context"
-          className="absolute left-0 top-[calc(100%+8px)] z-30 w-[22rem] overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-[0_24px_48px_-16px_rgba(15,23,42,0.20),0_6px_12px_-4px_rgba(15,23,42,0.10)] dark:border-neutral-700 dark:bg-neutral-900"
+          className="absolute left-0 top-[calc(100%+8px)] z-50 w-[22rem] overflow-visible rounded-2xl border border-neutral-200 bg-white shadow-[0_24px_48px_-16px_rgba(15,23,42,0.20),0_6px_12px_-4px_rgba(15,23,42,0.10)] dark:border-neutral-700 dark:bg-neutral-900"
         >
           <div className="border-b border-neutral-100 px-3 py-2.5 dark:border-neutral-800">
             <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-neutral-500 dark:text-neutral-400">

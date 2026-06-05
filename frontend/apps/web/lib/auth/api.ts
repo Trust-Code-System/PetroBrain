@@ -1,3 +1,5 @@
+import type { Role } from '@petrobrain/types';
+
 /**
  * /auth/signin and /auth/signup wire-format client. The backend returns
  * `{token, principal}` on success; the token is what every other route's
@@ -6,7 +8,7 @@
 export interface AuthPrincipalPayload {
   user_id: string;
   tenant_id: string;
-  role: string;
+  role: Role;
   email: string;
   allowed_assets: string[];
 }

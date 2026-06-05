@@ -16,6 +16,7 @@ export type Module = 'general' | 'well_control' | 'emissions_mrv';
 export interface Principal {
   tenantId: string;
   userId: string;
+  email?: string;
   role: Role;
   allowedAssets: string[];
 }

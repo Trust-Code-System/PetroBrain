@@ -49,6 +49,7 @@ def mint_jwt(
     *,
     tenant_id: str,
     user_id: str,
+    email: str | None = None,
     role: str,
     allowed_assets: list[str],
     secret: str,
@@ -62,6 +63,7 @@ def mint_jwt(
     claims = {
         "sub": user_id,
         "user_id": user_id,
+        "email": email,
         "tenant_id": tenant_id,
         "role": role,
         "allowed_assets": list(allowed_assets),

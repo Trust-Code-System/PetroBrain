@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 
 import { Badge, Button, Logo } from '@petrobrain/ui';
+import type { Principal } from '@petrobrain/types';
 
 import { ownerKeyOf, useConversationsStore } from '@/lib/chat/conversations';
 import { useProjectsStore } from '@/lib/chat/projects';
@@ -14,37 +15,21 @@ import { useSettingsStore } from '@/lib/chat/settings';
 import { useChatStore } from '@/lib/chat/store';
 import type { Message, MessageAttachment } from '@/lib/chat/types';
 
-/**
- * True when the principal is admin or platform_admin - the two roles that
- * should see the /admin nav entry. Defined once so the expanded and
- * collapsed sidebars agree on visibility.
- *
- * This is a UI-level hide only. The backend's /admin/* routes enforce role
- * gating server-side with a 403 - so a non-admin who knows the URL and
- * navigates manually still cannot read or write through these endpoints.
- */
-function isAdminPrincipal(principal: { role?: string } | null | undefined): boolean {
-  if (!principal) return false;
-  return principal.role === 'admin' || principal.role === 'platform_admin';
-}
-
-// Routes shown in the persistent left rail. `requiresAdmin` items are
-// filtered out for non-admin principals further below.
+// Routes shown in the persistent left rail. Internal admin tooling is kept
+// off this user-facing navigation.
 const NAV: {
-  href: '/chat' | '/projects' | '/customize' | '/emissions' | '/admin/documents' | '/admin';
+  href: '/chat' | '/projects' | '/customize' | '/emissions' | '/admin/documents';
   label: string;
-  icon: 'chat' | 'project' | 'customize' | 'leaf' | 'doc' | 'spark';
-  requiresAdmin?: boolean;
+  icon: 'chat' | 'project' | 'customize' | 'leaf' | 'doc';
 }[] = [
   { href: '/chat', label: 'Chat', icon: 'chat' },
   { href: '/projects', label: 'Projects', icon: 'project' },
   { href: '/customize', label: 'Customize', icon: 'customize' },
   { href: '/emissions', label: 'Emissions MRV', icon: 'leaf' },
   { href: '/admin/documents', label: 'Documents', icon: 'doc' },
-  { href: '/admin', label: 'Admin', icon: 'spark', requiresAdmin: true },
 ];
 
-function NavIcon({ kind }: { kind: 'chat' | 'project' | 'customize' | 'leaf' | 'doc' | 'spark' }) {
+function NavIcon({ kind }: { kind: 'chat' | 'project' | 'customize' | 'leaf' | 'doc' }) {
   if (kind === 'chat') {
     return (
       <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden>
@@ -110,20 +95,7 @@ function NavIcon({ kind }: { kind: 'chat' | 'project' | 'customize' | 'leaf' | '
       </svg>
     );
   }
-  return <SparkIcon />;
-}
-
-function SparkIcon() {
-  // Spark / signal glyph for the Admin Learning entry: not a settings cog
-  // (which would clash with /customize) and not a chart (which would clash
-  // with /emissions) - a feedback-flow shape that suggests "the system is
-  // learning here".
-  return (
-    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden>
-      <path d="M10 2v3M10 15v3M2 10h3M15 10h3M4.6 4.6l2.1 2.1M13.3 13.3l2.1 2.1M4.6 15.4l2.1-2.1M13.3 6.7l2.1-2.1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <circle cx="10" cy="10" r="2" stroke="currentColor" strokeWidth="1.5" />
-    </svg>
-  );
+  return null;
 }
 
 interface Conversation {
@@ -792,7 +764,7 @@ function UserCard({
   principal,
   onSignOut,
 }: {
-  principal: { role: string; userId: string; tenantId: string };
+  principal: Principal;
   onSignOut: () => void;
 }) {
   const router = useRouter();
@@ -800,10 +772,11 @@ function UserCard({
   const callMeName = useSettingsStore((s) => s.callMeName);
   const displayNameSetting = useSettingsStore((s) => s.displayName);
   const preferredName = (callMeName || displayNameSetting).trim();
-  const isEmail = principal.userId.includes('@');
+  const accountLabel = principal.email || principal.userId;
+  const isEmail = accountLabel.includes('@');
   const derivedName = isEmail
-    ? principal.userId.split('@')[0]!.charAt(0).toUpperCase() + principal.userId.split('@')[0]!.slice(1)
-    : principal.userId;
+    ? accountLabel.split('@')[0]!.charAt(0).toUpperCase() + accountLabel.split('@')[0]!.slice(1)
+    : accountLabel;
   const displayName = preferredName || derivedName;
   const initials = displayName.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || 'PB';
   const [open, setOpen] = useState(false);
@@ -877,8 +850,8 @@ function UserCard({
           className="absolute bottom-[calc(100%+8px)] left-0 right-0 z-50 overflow-hidden rounded-2xl border border-neutral-200 bg-white py-1 shadow-[0_18px_40px_-12px_rgba(15,23,42,0.18),0_4px_10px_-2px_rgba(15,23,42,0.08)] dark:border-neutral-700 dark:bg-neutral-900"
         >
           <div className="border-b border-neutral-100 px-3 py-2.5 dark:border-neutral-800">
-            <p className="truncate text-xs font-semibold text-neutral-900 dark:text-neutral-100" title={principal.userId}>
-              {principal.userId}
+            <p className="truncate text-xs font-semibold text-neutral-900 dark:text-neutral-100" title={accountLabel}>
+              {accountLabel}
             </p>
             <p className="mt-0.5 text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
               {principal.role} · {principal.tenantId}
@@ -907,8 +880,8 @@ function UserCard({
           </button>
           {showProfile ? (
             <div className="mx-2 mb-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 rounded-xl border border-neutral-100 bg-neutral-50/60 p-3 text-[11px] dark:border-neutral-800 dark:bg-neutral-900/60">
-              <span className="font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">User</span>
-              <span className="truncate font-mono text-neutral-800 dark:text-neutral-200">{principal.userId}</span>
+              <span className="font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Email</span>
+              <span className="truncate text-neutral-800 dark:text-neutral-200">{accountLabel}</span>
               <span className="font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Role</span>
               <span className="text-neutral-800 dark:text-neutral-200">{principal.role}</span>
               <span className="font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Tenant</span>
@@ -1106,7 +1079,7 @@ export function ChatSidebar() {
       </header>
 
       <nav className="space-y-0.5">
-        {NAV.filter((item) => !item.requiresAdmin || isAdminPrincipal(principal)).map((item) => {
+        {NAV.map((item) => {
           const active = pathname === item.href || (item.href !== '/chat' && pathname?.startsWith(item.href));
           return (
             <Link
@@ -1161,7 +1134,8 @@ function CollapsedSidebar({
 }) {
   const pathname = usePathname();
   const principal = useChatStore((s) => s.principal);
-  const initials = principal?.userId.slice(0, 2).toUpperCase() ?? 'PB';
+  const accountLabel = principal?.email || principal?.userId || '';
+  const initials = accountLabel.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || 'PB';
 
   return (
     <aside className="flex h-screen min-h-0 flex-col items-center gap-1 border-r border-neutral-200/70 bg-gradient-to-b from-white via-white to-primary-50/40 px-2 py-4 backdrop-blur-sm dark:border-neutral-800/70 dark:from-neutral-950 dark:via-neutral-950 dark:to-primary-900/20">
@@ -1189,7 +1163,7 @@ function CollapsedSidebar({
       </button>
 
       <nav className="mt-2 flex flex-col gap-1">
-        {NAV.filter((item) => !item.requiresAdmin || isAdminPrincipal(principal)).map((item) => {
+        {NAV.map((item) => {
           const active = pathname === item.href || (item.href !== '/chat' && pathname?.startsWith(item.href));
           return (
             <Link
@@ -1227,8 +1201,8 @@ function CollapsedSidebar({
         <button
           type="button"
           onClick={onSignOut}
-          aria-label={`Signed in as ${principal.userId}. Click to sign out.`}
-          title={`${principal.userId} - sign out`}
+          aria-label={`Signed in as ${accountLabel}. Click to sign out.`}
+          title={`${accountLabel} - sign out`}
           className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-primary-500 to-primary-700 text-xs font-bold text-white shadow-[0_4px_10px_-3px_rgba(234,88,12,0.5)] transition-transform hover:scale-105"
         >
           {initials}
