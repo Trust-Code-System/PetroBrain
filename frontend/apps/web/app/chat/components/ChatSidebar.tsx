@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 
 import { Badge, Button, Logo } from '@petrobrain/ui';
@@ -151,12 +152,41 @@ function ConversationsList() {
   const [filesFor, setFilesFor] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const triggerRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  // The menu is rendered via portal with position:fixed so it never gets
+  // clipped by the sidebar's overflow-y-auto. We track the trigger button's
+  // viewport rect, recompute on resize/scroll while open, and place the
+  // menu next to it. menuRect=null is the "closed" state for the portal.
+  const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null);
+
+  useLayoutEffect(() => {
+    if (!openMenu) {
+      setTriggerRect(null);
+      return;
+    }
+    function updateRect() {
+      const btn = triggerRefs.current.get(openMenu!);
+      if (btn) setTriggerRect(btn.getBoundingClientRect());
+    }
+    updateRect();
+    window.addEventListener('resize', updateRect);
+    // Scroll on any ancestor moves the trigger - listen on the capture
+    // phase so a scroll inside the sidebar's overflow-y-auto bubbles too.
+    window.addEventListener('scroll', updateRect, true);
+    return () => {
+      window.removeEventListener('resize', updateRect);
+      window.removeEventListener('scroll', updateRect, true);
+    };
+  }, [openMenu]);
 
   useEffect(() => {
     if (!openMenu) return;
     function onPointer(e: MouseEvent) {
-      if (!menuRef.current) return;
-      if (!menuRef.current.contains(e.target as Node)) setOpenMenu(null);
+      const target = e.target as Node;
+      if (menuRef.current?.contains(target)) return;
+      const trigger = triggerRefs.current.get(openMenu!);
+      if (trigger?.contains(target)) return;
+      setOpenMenu(null);
     }
     document.addEventListener('mousedown', onPointer);
     return () => document.removeEventListener('mousedown', onPointer);
@@ -215,6 +245,7 @@ function ConversationsList() {
   }
 
   const fileConversation = filesFor ? conversations[filesFor] : null;
+  const menuConversation = openMenu ? conversations[openMenu] : null;
   const uploadedFiles = collectChatFiles(fileConversation);
 
   return (
@@ -331,6 +362,10 @@ function ConversationsList() {
 
                       <button
                         type="button"
+                        ref={(el) => {
+                          if (el) triggerRefs.current.set(c.id, el);
+                          else triggerRefs.current.delete(c.id);
+                        }}
                         onClick={() => setOpenMenu(isMenuOpen ? null : c.id)}
                         className={clsx(
                           'flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-opacity hover:bg-white hover:text-neutral-700 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-200',
@@ -345,71 +380,6 @@ function ConversationsList() {
                         </svg>
                       </button>
 
-                      {isMenuOpen ? (
-                        <div
-                          ref={menuRef}
-                          className="absolute right-1 top-9 z-40 w-64 overflow-hidden rounded-3xl border border-neutral-200 bg-white py-2 shadow-[0_24px_60px_-18px_rgba(15,23,42,0.32),0_8px_18px_-8px_rgba(15,23,42,0.18)] dark:border-neutral-700 dark:bg-neutral-900"
-                        >
-                          <ConversationAction
-                            icon="files"
-                            label="View files in chat"
-                            onClick={() => {
-                              setFilesFor(c.id);
-                              setOpenMenu(null);
-                            }}
-                          />
-                          <ConversationAction
-                            icon="pin"
-                            label={c.pinned ? 'Unpin chat' : 'Pin chat'}
-                            onClick={() => {
-                              pinConversation(c.id, !c.pinned);
-                              setOpenMenu(null);
-                            }}
-                          />
-                          <ConversationAction
-                            icon="archive"
-                            label={showArchived ? 'Unarchive' : 'Archive'}
-                            onClick={() => {
-                              archiveConversation(c.id, !showArchived);
-                              setOpenMenu(null);
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => startRename(c.id, c.title)}
-                            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-medium text-neutral-700 hover:bg-primary-50 hover:text-primary-700 dark:text-neutral-200 dark:hover:bg-primary-900/30 dark:hover:text-primary-200"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 20 20" fill="none">
-                              <path
-                                d="M4 16l3-1 9-9-2-2-9 9-1 3z"
-                                stroke="currentColor"
-                                strokeWidth="1.5"
-                                strokeLinejoin="round"
-                              />
-                            </svg>
-                            Rename
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              deleteConversation(c.id);
-                              setOpenMenu(null);
-                            }}
-                            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
-                          >
-                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                              <path
-                                d="M5 6h10M8 6V4h4v2m-6 0v10h8V6"
-                                stroke="currentColor"
-                                strokeWidth="1.5"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                            </svg>
-                            Delete
-                          </button>
-                        </div>
-                      ) : null}
                     </div>
                   );
                 })}
@@ -418,6 +388,35 @@ function ConversationsList() {
           ))
         )}
       </div>
+
+      {openMenu && menuConversation && triggerRect && typeof document !== 'undefined'
+        ? createPortal(
+            <ConversationMenu
+              menuRef={menuRef}
+              triggerRect={triggerRect}
+              conversation={menuConversation}
+              showArchived={showArchived}
+              onViewFiles={() => {
+                setFilesFor(openMenu);
+                setOpenMenu(null);
+              }}
+              onPin={() => {
+                pinConversation(openMenu, !menuConversation.pinned);
+                setOpenMenu(null);
+              }}
+              onArchive={() => {
+                archiveConversation(openMenu, !showArchived);
+                setOpenMenu(null);
+              }}
+              onRename={() => startRename(openMenu, menuConversation.title)}
+              onDelete={() => {
+                deleteConversation(openMenu);
+                setOpenMenu(null);
+              }}
+            />,
+            document.body,
+          )
+        : null}
 
       {filesFor ? (
         <SidebarDialog
@@ -476,6 +475,91 @@ function ConversationAction({
       <ActionIcon kind={icon} />
       {label}
     </button>
+  );
+}
+
+/**
+ * Per-chat dropdown menu rendered via portal so it can never be clipped by
+ * the sidebar's overflow-y-auto container. ``triggerRect`` is the dots
+ * button's viewport rect; we anchor the menu to its right edge, place it
+ * just below, and flip to opening UPWARD when there isn't enough room
+ * below the trigger (e.g. the bottom-most chat in a tall list).
+ */
+function ConversationMenu({
+  menuRef,
+  triggerRect,
+  conversation,
+  showArchived,
+  onViewFiles,
+  onPin,
+  onArchive,
+  onRename,
+  onDelete,
+}: {
+  menuRef: React.RefObject<HTMLDivElement>;
+  triggerRect: DOMRect;
+  conversation: { pinned?: boolean };
+  showArchived: boolean;
+  onViewFiles: () => void;
+  onPin: () => void;
+  onArchive: () => void;
+  onRename: () => void;
+  onDelete: () => void;
+}) {
+  const MENU_W = 256;
+  const MENU_H_APPROX = 220;
+  const GAP = 6;
+
+  // Default: open downward, anchored to the trigger's right edge so the
+  // menu's right edge tracks the dots-button. Flip upward if the menu would
+  // overflow the viewport bottom; flip to the trigger's left edge if it
+  // would overflow the viewport right.
+  const openUp = triggerRect.bottom + GAP + MENU_H_APPROX > window.innerHeight;
+  const top = openUp
+    ? Math.max(GAP, triggerRect.top - GAP - MENU_H_APPROX)
+    : triggerRect.bottom + GAP;
+
+  let left = triggerRect.right - MENU_W;
+  if (left + MENU_W + GAP > window.innerWidth) left = window.innerWidth - MENU_W - GAP;
+  if (left < GAP) left = GAP;
+
+  const style: React.CSSProperties = { position: 'fixed', top, left, width: MENU_W };
+
+  return (
+    // No role="menu" here: ARIA would then require menuitem children, and
+    // our existing actions are <button>s for keyboard + screen-reader
+    // accessibility. The dropdown still behaves correctly without the role.
+    // Inline style is intentional - top/left/width are computed from the
+    // trigger's runtime bounding rect, not part of the design system.
+    <div
+      ref={menuRef}
+      style={style}
+      className="z-50 overflow-hidden rounded-3xl border border-neutral-200 bg-white py-2 shadow-[0_24px_60px_-18px_rgba(15,23,42,0.32),0_8px_18px_-8px_rgba(15,23,42,0.18)] dark:border-neutral-700 dark:bg-neutral-900"
+    >
+      <ConversationAction icon="files" label="View files in chat" onClick={onViewFiles} />
+      <ConversationAction icon="pin" label={conversation.pinned ? 'Unpin chat' : 'Pin chat'} onClick={onPin} />
+      <ConversationAction icon="archive" label={showArchived ? 'Unarchive' : 'Archive'} onClick={onArchive} />
+      <button
+        type="button"
+        onClick={onRename}
+        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-medium text-neutral-700 hover:bg-primary-50 hover:text-primary-700 dark:text-neutral-200 dark:hover:bg-primary-900/30 dark:hover:text-primary-200"
+      >
+        <svg width="12" height="12" viewBox="0 0 20 20" fill="none">
+          <path d="M4 16l3-1 9-9-2-2-9 9-1 3z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+        </svg>
+        Rename
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+      >
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M5 6h10M8 6V4h4v2m-6 0v10h8V6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        Delete
+      </button>
+    </div>
   );
 }
 
