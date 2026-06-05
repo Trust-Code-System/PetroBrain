@@ -20,6 +20,7 @@ import { useProjectsStore } from '@/lib/chat/projects';
 import { useSettingsStore } from '@/lib/chat/settings';
 import { SessionExpiredError, streamChat, type StreamEvent } from '@/lib/chat/streamChat';
 import { submitFeedback } from '@/lib/chat/feedback';
+import { createTokenStreamer } from '@/lib/chat/tokenStreamer';
 import { reportError } from '@/lib/errors/report';
 
 import { AuthGate } from './components/AuthGate';
@@ -423,6 +424,23 @@ export function ChatClient() {
         ? `${prefixBlocks.join('\n\n')}\n\n${trimmed}`
         : trimmed;
 
+      // Paced token render. The SSE 'token' events get pushed into this
+      // streamer instead of being applied immediately; the streamer drains
+      // chars at ~250/s with acceleration when the model bursts ahead, so
+      // the cursor moves smoothly the way Claude/ChatGPT do. Flushed on
+      // 'done' so the final assistant text is whole before notifications,
+      // canvas auto-open, and the feedback chip activation read it.
+      const streamer = createTokenStreamer({
+        applyChars: (chars) => {
+          workingMessages = workingMessages.map((m) =>
+            m.id === assistantId && m.role === 'assistant'
+              ? { ...m, text: m.text + chars }
+              : m,
+          );
+          setMessagesInStore(convoId!, workingMessages, ownerKey);
+        },
+      });
+
       try {
         await streamChat({
           baseUrl: apiBaseUrl,
@@ -438,12 +456,27 @@ export function ChatClient() {
           },
           signal: controller.signal,
           onEvent: (event) => {
+            if (event.event === 'token') {
+              streamer.push(event.data.text);
+              return;
+            }
+            // Everything else (citation, tool_call, tool_result, flag,
+            // done) needs the latest text in place before it lands - so
+            // flush any buffered chars first, then apply the event.
+            streamer.flush();
             workingMessages = applyEvent(workingMessages, assistantId, event);
             setMessagesInStore(convoId!, workingMessages, ownerKey);
           },
         });
+        streamer.flush();
         notifyAnswerReady(notificationTitle);
       } catch (e) {
+        // Always flush partial text - the user should see whatever did
+        // stream in, both for abort (their decision) and error (so they
+        // can see how far it got). For session-expired we also flush
+        // because the buffered chars represent work the server already
+        // sent before the token expired.
+        streamer.flush();
         const wasUserAbort =
           e instanceof DOMException && e.name === 'AbortError';
         const sessionExpired = e instanceof SessionExpiredError;
@@ -488,6 +521,10 @@ export function ChatClient() {
           setMessagesInStore(convoId!, workingMessages, ownerKey);
         }
       } finally {
+        // Last-resort cleanup. flush() in the happy / catch paths above
+        // already covers it; stop() here just ensures we never leave a
+        // dangling rAF id behind if those paths somehow get skipped.
+        streamer.stop();
         setSending(false);
         abortRef.current = null;
       }
