@@ -106,6 +106,18 @@ services:
       - key: PB_ENABLE_SELF_SIGNUP
         value: "false"
 
+      # --- Neon Auth (SSO): verify the EdDSA JWT the web app forwards as a
+      #     Bearer against Neon's JWKS, then map the token's `sub` to an active
+      #     users row (see app/api/deps.py::_neon_principal).
+      #     NEON_AUTH_BASE_URL has NO PB_ prefix - it matches the value the web
+      #     app/Vercel already use, and MUST include the `/neondb/auth` path
+      #     segment: Neon routes by the first path segment as the database name,
+      #     so dropping it makes JWKS resolve against a nonexistent db "api". ---
+      - key: PB_NEON_AUTH_ENABLED
+        value: "true"
+      - key: NEON_AUTH_BASE_URL
+        value: https://ep-empty-fire-apd8y5nz.neonauth.c-7.us-east-1.aws.neon.tech/neondb/auth
+
       # --- Optional web search via Tavily. Leave blank to disable. ---
       - key: PB_TAVILY_API_KEY
         sync: false

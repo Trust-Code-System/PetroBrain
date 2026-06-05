@@ -1,6 +1,7 @@
 """Auth + tenant resolution dependencies (RBAC down to asset/function level)."""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from collections.abc import Callable
 
@@ -11,6 +12,8 @@ from fastapi.concurrency import run_in_threadpool
 from app.config import get_settings
 from app.core import neon_auth
 
+
+logger = logging.getLogger(__name__)
 
 VALID_ROLES = {"platform_admin", "admin", "engineer", "field", "hse"}
 
@@ -81,36 +84,67 @@ async def _neon_principal(token: str) -> Principal:
     Verify a Neon Auth (Better Auth) EdDSA token and map it to a Principal via
     the local users table.
 
-    Disabled by default. When ``PB_NEON_AUTH_ENABLED=true``, the token must:
+    Disabled by default. When ``PB_NEON_AUTH_ENABLED=true`` *and*
+    ``NEON_AUTH_BASE_URL`` is set, the token must:
       * pass JWKS signature + ``exp`` verification, AND
-      * carry an ``email`` claim that matches an *active* row in the ``users``
-        table - which is what supplies tenant_id, role, and allowed_assets.
+      * resolve to an *active* row in the ``users`` table - which is what
+        supplies tenant_id, role, and allowed_assets.
 
-    No email match = 401. Previously this path collapsed every Neon user into
-    ``default_signup_tenant_id`` with ``allowed_assets=["*"]``, which silently
-    defeated multi-tenant isolation. There is no per-tenant trust-on-first-use:
-    a tenant admin must invite the user before Neon SSO works for them.
+    Mapping: Neon Auth RLS tokens carry the user id in ``sub`` and frequently
+    omit ``email``, so we map by ``sub`` -> ``users.id`` first (a user is
+    provisioned with ``id`` set to their Neon sub), falling back to the ``email``
+    claim when the token carries one. No active match = 401.
+
+    Previously this path collapsed every Neon user into ``default_signup_tenant_id``
+    with ``allowed_assets=["*"]``, which silently defeated multi-tenant isolation.
+    There is no trust-on-first-use: a tenant admin must provision the user before
+    Neon SSO works for them.
+
+    Every rejection is logged with its reason (server-side only - the client
+    always sees an opaque "invalid credentials") so a misconfiguration or a
+    missing user row is diagnosable instead of an unexplained 401.
     """
     settings = get_settings()
     invalid = HTTPException(status_code=401, detail="invalid credentials")
-    if not settings.neon_auth_enabled or not neon_auth.is_configured():
+    if not settings.neon_auth_enabled:
+        logger.warning("neon token rejected: PB_NEON_AUTH_ENABLED is false")
+        raise invalid
+    if not neon_auth.is_configured():
+        logger.warning("neon token rejected: NEON_AUTH_BASE_URL is not set")
         raise invalid
     try:
         claims = await run_in_threadpool(neon_auth.verify_neon_token, token)
     except Exception as exc:  # JWKS fetch / signature / expiry failure
+        logger.warning("neon token rejected: signature/expiry/JWKS verification failed: %s", exc)
         raise invalid from exc
-
-    email = claims.get("email")
-    if not isinstance(email, str) or not email.strip():
-        raise invalid
 
     from app.db.users_repository import get_users_repository
     repo = get_users_repository()
-    record = await run_in_threadpool(repo.find_by_email_any_tenant, email.strip())
-    if record is None or record.get("status") != "active":
+
+    # Primary mapping: Neon sub -> users.id. Fall back to email when present.
+    record = None
+    sub = claims.get("sub")
+    if isinstance(sub, str) and sub.strip():
+        record = await run_in_threadpool(repo.find_by_id_any_tenant, sub.strip())
+    email = claims.get("email")
+    if record is None and isinstance(email, str) and email.strip():
+        record = await run_in_threadpool(repo.find_by_email_any_tenant, email.strip())
+
+    if record is None:
+        logger.warning(
+            "neon token rejected: no active local user for sub=%r email=%r "
+            "(provision a users row with id set to the Neon sub)",
+            sub, email,
+        )
+        raise invalid
+    if record.get("status") != "active":
+        logger.warning("neon token rejected: user %r is not active (status=%r)",
+                       record.get("id"), record.get("status"))
         raise invalid
     role = record.get("role")
     if role not in VALID_ROLES:
+        logger.warning("neon token rejected: user %r has invalid role %r",
+                       record.get("id"), role)
         raise invalid
     return Principal(
         tenant_id=record["tenant_id"],

@@ -115,6 +115,17 @@ class LocalJsonUsersRepository:
                 return row
         return None
 
+    def find_by_id_any_tenant(self, user_id: str) -> dict[str, Any] | None:
+        """Locate an active user by id across all tenants. The Neon SSO path's
+        primary mapping: a Neon Auth token carries the user id in ``sub`` (and
+        may omit email), so a user is provisioned with ``id`` set to that Neon
+        sub. Returns the first active match, or None."""
+        needle = user_id.strip()
+        for row in self._read_all():
+            if row["id"] == needle and row.get("status") == "active":
+                return row
+        return None
+
     def signup(self, *, tenant_id: str, email: str, role: str,
                password_hash: str,
                allowed_assets: list[str] | None = None,
@@ -315,6 +326,20 @@ class PostgresUsersRepository:
                 f"WHERE lower(email) = lower(%s) AND status = 'active' "
                 f"LIMIT 1",
                 (email.strip(),),
+            ).fetchone()
+        return _serialize_row(row) if row else None
+
+    def find_by_id_any_tenant(self, user_id: str) -> dict[str, Any] | None:
+        """Cross-tenant id lookup for the Neon SSO path: ``users.id`` is set to
+        the Neon Auth ``sub`` at provisioning time. Runs under the platform-admin
+        GUC ('*') because the caller doesn't yet know the tenant - the result IS
+        what supplies tenant_id to the Principal."""
+        with pg_tenant(PLATFORM_ADMIN_TENANT, self.dsn) as conn:
+            row = conn.execute(
+                f"SELECT {_USER_COLUMNS} FROM users "
+                f"WHERE id = %s AND status = 'active' "
+                f"LIMIT 1",
+                (user_id.strip(),),
             ).fetchone()
         return _serialize_row(row) if row else None
 
