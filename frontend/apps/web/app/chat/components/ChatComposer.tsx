@@ -18,10 +18,14 @@ import { useChatStore, type ThinkingMode } from '@/lib/chat/store';
 
 import { ComposerMenu } from './ComposerMenu';
 
+// Picker copy is deliberately behaviour-focused, not model-named. Users
+// don't need to know which underlying provider/model powers each tier and
+// surfacing those names ('Haiku', 'Sonnet') leaked an implementation
+// detail that doesn't survive a future provider swap.
 const THINKING_MODES: Array<{ key: ThinkingMode; label: string; title: string }> = [
-  { key: 'instant', label: 'Instant', title: 'Fast Haiku model, short answers' },
-  { key: 'default', label: 'Default', title: 'Standard Sonnet, no extended thinking' },
-  { key: 'extended', label: 'Extended', title: 'Sonnet with extended thinking for hard problems' },
+  { key: 'instant', label: 'Instant', title: 'Fast answers for quick questions' },
+  { key: 'default', label: 'Default', title: 'Standard answers - balanced speed and depth' },
+  { key: 'extended', label: 'Extended', title: 'Deeper thinking for hard or multi-step problems' },
 ];
 
 const ACCEPTED = '.txt,.md,.markdown,.csv,.json,.pdf,.docx,image/*';
@@ -166,7 +170,7 @@ function ThinkingModePicker({
         onClick={() => setOpen((v) => !v)}
         disabled={disabled}
         aria-haspopup="true"
-        aria-expanded={open}
+        aria-expanded={open ? 'true' : 'false'}
         title={current.title}
         className={`group inline-flex items-center gap-1.5 rounded-full border bg-white px-2.5 py-1 text-xs font-medium transition-all disabled:cursor-not-allowed disabled:opacity-50 dark:bg-neutral-900 ${
           open
