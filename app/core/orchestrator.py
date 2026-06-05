@@ -17,6 +17,7 @@ This is intentionally framework-light (a small explicit loop) to avoid lock-in.
 from __future__ import annotations
 
 import json
+import re
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Callable
@@ -1032,7 +1033,14 @@ def _fallback_answer_from_web_results(tool_results: list[dict[str, Any]]) -> str
 def _clean_summary_part(value: Any) -> str:
     if value is None:
         return ""
-    return " ".join(str(value).split())
+    text = " ".join(str(value).split())
+    # Search snippets often contain raw page markdown ("###", "#", "**").
+    # Strip those presentation markers before turning snippets into user copy.
+    text = text.replace("#", "")
+    text = text.replace("*", "")
+    text = text.replace("_", "")
+    text = re.sub(r"\s+([:;,.])", r"\1", text)
+    return text.strip()
 
 
 def _truncate_words(value: str, max_words: int) -> str:

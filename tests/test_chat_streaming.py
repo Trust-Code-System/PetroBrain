@@ -160,9 +160,9 @@ def test_stream_chat_summarizes_web_results_when_final_answer_is_empty(monkeypat
                 "provider": "test",
                 "results": [
                     {
-                        "title": "Metropole Petroleum Limited",
+                        "title": "# Metropole **Petroleum** Limited",
                         "url": "https://example.com/metropole",
-                        "snippet": "Metropole Petroleum Limited is listed as an oil and gas company with public corporate references.",
+                        "snippet": "### **Metropole Petroleum Limited** is listed as an oil and gas company with public corporate references.",
                     }
                 ],
             },
@@ -190,6 +190,8 @@ def test_stream_chat_summarizes_web_results_when_final_answer_is_empty(monkeypat
     assert names == ["tool_call", "tool_result", "citation", "token", "done"]
     assert "I found current public sources" in events[-2][1]["text"]
     assert "Metropole Petroleum Limited" in events[-2][1]["text"]
+    assert "#" not in events[-2][1]["text"]
+    assert "*" not in events[-2][1]["text"]
     assert events[-1][1]["answer"] == events[-2][1]["text"]
 
 
