@@ -190,6 +190,29 @@ def test_invitation_is_hashed_and_delivery_is_truthful(repos):
     assert len(stored["invite_token_hash"]) == 64
 
 
+def test_invitation_email_sent_when_delivery_configured(repos, monkeypatch):
+    sent: dict = {}
+
+    def fake_send(**kwargs):
+        sent.update(kwargs)
+        return {"email_sent": True, "message": f"Invitation email sent to {kwargs['to_email']}."}
+
+    monkeypatch.setattr(routes_onboarding, "send_invitation_email", fake_send)
+    response = client.post(
+        "/organizations/current/invitations",
+        headers=headers(),
+        json={"email": "newhire@example.com", "role": "engineer", "department": "Operations"},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["delivery"]["email_sent"] is True
+    assert "newhire@example.com" in body["delivery"]["message"]
+    assert sent["to_email"] == "newhire@example.com"
+    assert sent["company_name"] == "Pending workspace"
+    assert sent["role_label"] == "Engineer"
+    assert sent["raw_token"]
+
+
 def test_invitation_acceptance_creates_membership(repos):
     _, users, _, _, _ = repos
     created = client.post(

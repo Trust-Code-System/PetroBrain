@@ -16,6 +16,7 @@ from app.api.deps import (
 from app.config import get_settings
 from app.core.audit import AuditEvent, get_audit_logger
 from app.core.auth import hash_password
+from app.core.email import email_delivery_active, send_invitation_email
 from app.db.assets_repository import get_assets_repository
 from app.db.onboarding_repository import (
     get_onboarding_repository,
@@ -406,7 +407,15 @@ async def create_invitation(
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    response = _invitation_response(record, raw_token)
+    delivery = _deliver_invitation(
+        tenant_id=who.tenant_id,
+        email=req.email,
+        role=req.role,
+        raw_token=raw_token,
+        expires_at=record.get("expires_at"),
+        message=req.message,
+    )
+    response = _invitation_response(record, raw_token, delivery)
     _audit("invitation_created", who, req.model_dump(), response)
     return response
 
@@ -459,7 +468,15 @@ async def update_invitation(
             invited_by_user_id=who.user_id,
             expiry_days=get_settings().invitation_expiry_days,
         )
-        response = _invitation_response(replacement, token)
+        delivery = _deliver_invitation(
+            tenant_id=who.tenant_id,
+            email=existing["email"],
+            role=req.role or existing["role"],
+            raw_token=token,
+            expires_at=replacement.get("expires_at"),
+            message=existing.get("message"),
+        )
+        response = _invitation_response(replacement, token, delivery)
         _audit("invitation_resent", who, {"invitation_id": invitation_id}, response)
         return response
     changes = {
@@ -650,24 +667,46 @@ def _valid_invitation(token: str) -> dict[str, Any]:
 
 
 def _invitation_response(
-    record: dict[str, Any], raw_token: str | None = None
+    record: dict[str, Any],
+    raw_token: str | None = None,
+    delivery: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     response = {
         key: value for key, value in record.items() if key != "invite_token_hash"
     }
-    delivery_enabled = get_settings().invite_email_delivery_enabled
-    response["delivery"] = {
-        "email_sent": False,
-        "message": (
-            "Email delivery is configured but no delivery adapter is active."
-            if delivery_enabled
-            else "Invite created inside PetroBrain. Email delivery is not enabled yet."
-        ),
-    }
+    if delivery is not None:
+        response["delivery"] = delivery
+    else:
+        response["delivery"] = {
+            "email_sent": False,
+            "message": (
+                "Email delivery is active. The invitation email is sent when the invite is created or resent."
+                if email_delivery_active()
+                else "Invite created inside PetroBrain. Email delivery is not enabled yet."
+            ),
+        }
     if raw_token:
         response["invite_token"] = raw_token
         response["invite_path"] = f"/invitations/{raw_token}"
     return response
+
+
+def _role_label(role: str) -> str:
+    return role.replace("_", " ").title()
+
+
+def _deliver_invitation(
+    *, tenant_id: str, email: str, role: str, raw_token: str, expires_at: Any, message: str | None
+) -> dict[str, Any]:
+    tenant = _tenant_or_404(tenant_id)
+    return send_invitation_email(
+        to_email=email,
+        company_name=tenant["name"],
+        role_label=_role_label(role),
+        raw_token=raw_token,
+        expires_at=expires_at,
+        message=message,
+    )
 
 
 def _public_organization(tenant: dict[str, Any]) -> dict[str, Any]:

@@ -135,3 +135,15 @@ services:
       # --- Founder bootstrap: emails that get platform_admin on signup. ---
       - key: PB_BOOTSTRAP_PLATFORM_ADMIN_EMAILS
         sync: false
+
+      # --- Transactional email via Resend (team invitations). Paste the API
+      #     key in the Render dashboard. The "from" domain must be verified in
+      #     Resend, and the public base URL is used to build invite links in
+      #     the email body. Leave PB_RESEND_API_KEY blank to keep delivery off
+      #     (invites still work; the secure link is shown in the UI). ---
+      - key: PB_RESEND_API_KEY
+        sync: false
+      - key: PB_INVITE_EMAIL_FROM
+        value: PetroBrain <onboarding@petrobrain.xyz>
+      - key: PB_APP_PUBLIC_BASE_URL
+        value: https://petrobrain.xyz

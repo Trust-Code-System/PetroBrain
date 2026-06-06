@@ -440,8 +440,11 @@ export function SettingsClient() {
   }
   if (!token || !principal) return <AuthGate />;
 
+  // overflow-x-clip (not -hidden): hidden forces overflow-y to compute to auto,
+  // turning <main> into a scroll container and breaking the sticky sidebar. clip
+  // contains the decorative blobs without that side effect.
   return (
-    <main className="relative min-h-screen overflow-x-hidden">
+    <main className="relative min-h-screen overflow-x-clip">
       <div
         aria-hidden
         className="pointer-events-none absolute -top-40 right-[-10%] h-[28rem] w-[28rem] rounded-full bg-primary-200/30 blur-3xl dark:bg-primary-800/20"

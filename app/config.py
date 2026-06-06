@@ -176,6 +176,15 @@ class Settings(BaseSettings):
     default_signup_role: str = "engineer"
     invitation_expiry_days: int = 7
     invite_email_delivery_enabled: bool = False
+    # Resend (https://resend.com) transactional email. When resend_api_key is
+    # set, invitation emails are actually delivered; otherwise the invite is
+    # still created and the secure link is shown in the UI for manual sharing.
+    # The "from" address domain must be verified in the Resend dashboard.
+    resend_api_key: str = ""
+    invite_email_from: str = "PetroBrain <onboarding@petrobrain.xyz>"
+    # Absolute origin of the web app, used to build invitation links inside
+    # outbound emails (the browser-side UI uses window.location.origin instead).
+    app_public_base_url: str = "https://petrobrain.xyz"
     # Comma-separated list of emails that get auto-promoted to platform_admin
     # on first signup. Lets the founder bootstrap admin access without having
     # to edit the user store by hand. Lowercased + stripped before compare.
