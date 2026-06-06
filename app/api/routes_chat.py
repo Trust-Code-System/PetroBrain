@@ -13,6 +13,7 @@ from app.core.audit import AuditEvent, get_audit_logger
 from app.core.audit_hash import sha256_canonical
 from app.core.observability import increment_token_cost_counters, record_chat_turn
 from app.core.orchestrator import Orchestrator, Turn
+from app.core.module_routing import route_module
 from app.core import turn_attribution
 from app.core.chunk_weight_updater import update_weights_from_feedback
 from app.db.audit_events_repository import get_audit_events_repository
@@ -36,6 +37,9 @@ async def chat(
     stream: bool = Query(default=False),
     who: Principal = Depends(get_principal),
 ):
+    req = req.model_copy(
+        update={"module": route_module(req.message, req.module)}
+    )
     turn_id = str(uuid4())
     if stream:
         return StreamingResponse(

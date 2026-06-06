@@ -28,7 +28,7 @@ class ChatAttachment(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
-    module: str = "general"          # general | well_control | emissions_mrv | ptw
+    module: str = "general"  # general | research | well_control | emissions_mrv | ptw
     user_role: str | None = None
     jurisdiction: str | None = None
     asset_context: str | None = None

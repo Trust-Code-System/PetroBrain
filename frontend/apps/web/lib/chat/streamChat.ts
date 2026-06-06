@@ -24,7 +24,18 @@ export type StreamEvent =
   | { event: 'token'; data: { text: string } }
   | { event: 'tool_call'; data: { tool: string; id?: string; input: unknown } }
   | { event: 'tool_result'; data: { tool: string; result: Record<string, unknown> } }
-  | { event: 'citation'; data: { title: string | null; revision: string | null; clause: string | null } }
+  | {
+      event: 'citation';
+      data: {
+        source_id?: string | null;
+        title: string | null;
+        revision: string | null;
+        clause: string | null;
+        url?: string | null;
+        reliability?: 'primary' | 'high' | 'medium' | 'low' | 'unknown' | null;
+        freshness?: 'current' | 'dated' | 'unknown' | null;
+      };
+    }
   | { event: 'flag'; data: { flag: string } }
   | {
       event: 'done';

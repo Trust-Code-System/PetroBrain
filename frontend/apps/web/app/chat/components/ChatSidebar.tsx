@@ -18,18 +18,23 @@ import type { Message, MessageAttachment } from '@/lib/chat/types';
 // Routes shown in the persistent left rail. Internal admin tooling is kept
 // off this user-facing navigation.
 const NAV: {
-  href: '/chat' | '/projects' | '/customize' | '/emissions' | '/admin/documents';
+  href: '/chat' | '/research' | '/projects' | '/customize' | '/emissions' | '/admin/documents';
   label: string;
-  icon: 'chat' | 'project' | 'customize' | 'leaf' | 'doc';
+  icon: 'chat' | 'research' | 'project' | 'customize' | 'leaf' | 'doc';
 }[] = [
   { href: '/chat', label: 'Chat', icon: 'chat' },
+  { href: '/research', label: 'Research', icon: 'research' },
   { href: '/projects', label: 'Projects', icon: 'project' },
   { href: '/customize', label: 'Customize', icon: 'customize' },
   { href: '/emissions', label: 'Emissions MRV', icon: 'leaf' },
   { href: '/admin/documents', label: 'Documents', icon: 'doc' },
 ];
 
-function NavIcon({ kind }: { kind: 'chat' | 'project' | 'customize' | 'leaf' | 'doc' }) {
+function NavIcon({
+  kind,
+}: {
+  kind: 'chat' | 'research' | 'project' | 'customize' | 'leaf' | 'doc';
+}) {
   if (kind === 'chat') {
     return (
       <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden>
@@ -38,6 +43,19 @@ function NavIcon({ kind }: { kind: 'chat' | 'project' | 'customize' | 'leaf' | '
           stroke="currentColor"
           strokeWidth="1.5"
           strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  if (kind === 'research') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden>
+        <circle cx="8.5" cy="8.5" r="4.5" stroke="currentColor" strokeWidth="1.5" />
+        <path
+          d="M12 12l4 4M6.5 8.5h4M8.5 6.5v4"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
         />
       </svg>
     );

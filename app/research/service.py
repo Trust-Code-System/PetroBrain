@@ -7,6 +7,10 @@ from collections.abc import AsyncIterator
 from datetime import date
 from typing import Any
 
+from app.core.answer_synthesis import (
+    AnswerSynthesisRequest,
+    AnswerSynthesisService,
+)
 from app.config import get_settings
 from app.core.evidence import build_evidence_pack
 from app.core.guardrails import pre_check
@@ -328,6 +332,7 @@ class ResearchService:
 
             report, report_flags = await self._build_report(
                 query=record["query"],
+                tenant_id=tenant_id,
                 config=config,
                 sources=sources,
                 outdated_sources=outdated,
@@ -553,6 +558,7 @@ class ResearchService:
         self,
         *,
         query: str,
+        tenant_id: str,
         config: dict[str, Any],
         sources: list[dict[str, Any]],
         outdated_sources: list[str],
@@ -583,11 +589,33 @@ class ResearchService:
                 ["insufficient_sources"],
             )
 
-        prompt = self._report_prompt(query=query, config=config, sources=sources)
         flags: list[str] = []
         try:
-            response = await self._complete_report(prompt)
-            markdown = response.text.strip()
+            synthesis = await AnswerSynthesisService(llm=self.llm).synthesize(
+                AnswerSynthesisRequest(
+                    original_question=query,
+                    tenant_id=tenant_id,
+                    jurisdiction=config.get("jurisdiction"),
+                    asset_context=config.get("asset_context"),
+                    safety_flags=["safety_critical"]
+                    if config.get("safety_critical")
+                    else [],
+                    module_name="research",
+                    report_type=config.get("report_type"),
+                    web_search_enabled=bool(config.get("web_search_allowed")),
+                    web_search_attempted=bool(config.get("web_search_allowed")),
+                    web_search_disabled=(
+                        bool(config.get("web_search_allowed"))
+                        and not any(
+                            source["source_type"] == "web" for source in sources
+                        )
+                    ),
+                    normalized_sources=sources,
+                ),
+                thinking_mode="extended",
+            )
+            markdown = synthesis.final_answer_markdown
+            flags.extend(synthesis.flags)
         except LLMConfigurationError:
             markdown = self._source_digest_report(query, sources, not_verified, warnings)
             flags.append("research_synthesis_unavailable")
@@ -595,8 +623,6 @@ class ResearchService:
             markdown = self._source_digest_report(query, sources, not_verified, warnings)
             flags.append("empty_research_synthesis")
 
-        markdown, citation_flags = _validate_citation_markers(markdown, sources)
-        flags.extend(citation_flags)
         if _has_uncited_numeric_claim(markdown):
             flags.append("unverified_numeric_claims")
             warnings.append(
@@ -812,16 +838,17 @@ SOURCE LEDGER
         warnings: list[str],
     ) -> str:
         rows = "\n".join(
-            f"- **{source['title']}** [{source['id']}]: "
-            f"{_truncate(source.get('snippet') or 'No excerpt available.', 320)}"
+            f"- [{source['id']}] **{source['title']}** "
+            f"({source['reliability']} reliability, {source['freshness']} freshness)"
             for source in sources
         )
         return (
             f"# Research: {query}\n\n"
             "## Executive summary\n\n"
-            "PetroBrain collected the governed sources below, but model synthesis was "
-            "unavailable. Review the source digest directly.\n\n"
-            f"## Evidence and analysis\n\n{rows}\n\n"
+            "PetroBrain collected governed evidence, but the final analyst synthesis "
+            "was unavailable. Raw source excerpts are not shown as a substitute for "
+            "the report.\n\n"
+            f"## Sources checked\n\n{rows}\n\n"
             "## What I could not verify\n\n"
             + "\n".join(f"- {item}" for item in not_verified)
             + "\n\n## Recommended next actions\n\n"

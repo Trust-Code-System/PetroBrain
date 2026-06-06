@@ -344,6 +344,11 @@ function SourcePill({ index, citation }: { index: number; citation: Citation }) 
       >
         {indexBadge}
         <span className="truncate">{label}</span>
+        {citation.reliability ? (
+          <span className="text-[9px] uppercase tracking-wide text-neutral-400 group-hover:text-primary-500 dark:text-neutral-500">
+            {citation.reliability}
+          </span>
+        ) : null}
       </a>
     );
   }
@@ -351,6 +356,11 @@ function SourcePill({ index, citation }: { index: number; citation: Citation }) 
     <span title={title} className={className}>
       {indexBadge}
       <span className="truncate">{label}</span>
+      {citation.reliability ? (
+        <span className="text-[9px] uppercase tracking-wide text-neutral-400 dark:text-neutral-500">
+          {citation.reliability}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -373,6 +383,8 @@ function fullTitle(c: Citation): string {
   if (c.title) parts.push(c.title);
   if (c.revision) parts.push(c.revision);
   if (c.clause) parts.push(`§${c.clause}`);
+  if (c.reliability) parts.push(`${c.reliability} reliability`);
+  if (c.freshness) parts.push(`${c.freshness} freshness`);
   if (c.url) parts.push(c.url);
   return parts.join(' · ') || 'source';
 }

@@ -20,6 +20,7 @@ import { useProjectsStore } from '@/lib/chat/projects';
 import { useSettingsStore } from '@/lib/chat/settings';
 import { SessionExpiredError, streamChat, type StreamEvent } from '@/lib/chat/streamChat';
 import { submitFeedback } from '@/lib/chat/feedback';
+import { routeModule } from '@/lib/chat/moduleRouting';
 import { createTokenStreamer } from '@/lib/chat/tokenStreamer';
 import { reportError } from '@/lib/errors/report';
 
@@ -359,11 +360,15 @@ export function ChatClient() {
               : null,
       }));
 
+      const effectiveModule = routeModule(trimmed, module);
+      if (effectiveModule !== module) {
+        setModule(effectiveModule);
+      }
       const userMsg: Message = {
         id: nextId('u'),
         role: 'user',
         text: trimmed,
-        module,
+        module: effectiveModule,
         assetContext,
         createdAt: Date.now(),
         ...(attachments.length > 0 ? { attachments } : {}),
@@ -448,7 +453,7 @@ export function ChatClient() {
           token,
           body: {
             message: wireMessage,
-            module,
+            module: effectiveModule,
             asset_context: assetContext,
             user_role: principal.role,
             thinking_mode: thinkingMode,
@@ -513,7 +518,7 @@ export function ChatClient() {
             token,
             route: '/chat',
             error: e,
-            metadata: { kind: 'chat_stream', module },
+            metadata: { kind: 'chat_stream', module: effectiveModule },
           });
           setError(detail);
           workingMessages = workingMessages.map((m) =>
@@ -547,6 +552,7 @@ export function ChatClient() {
       principal,
       sending,
       setMessagesInStore,
+      setModule,
       setTitleFromFirstMessage,
       thinkingMode,
       token,

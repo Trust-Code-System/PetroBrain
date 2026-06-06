@@ -17,28 +17,21 @@ This is intentionally framework-light (a small explicit loop) to avoid lock-in.
 from __future__ import annotations
 
 import json
-import re
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Callable
 
+from app.core.answer_synthesis import (
+    AnswerSynthesisRequest,
+    AnswerSynthesisService,
+    calculation_results_from_tools,
+    web_results_from_tools,
+)
 from app.core.evidence import build_evidence_pack
 from app.core.guardrails import post_check, pre_check
-from app.core.llm_service import LLMConfigurationError, LLMService
+from app.core.llm_service import LLMConfigurationError, LLMResponse, LLMService
 from app.core.prompts import build_system_prompt
-
-
-def _tenant_memories_for(tenant_id: str) -> list[str]:
-    """Load active memory bodies for a tenant, sorted oldest-first. Returns
-    an empty list on any read error so a misconfigured memory store can never
-    block a chat turn. Slice 2 of the learning loop."""
-    if not tenant_id:
-        return []
-    try:
-        from app.db.tenant_memory_repository import get_tenant_memory_repository
-        return get_tenant_memory_repository().list_for_prompt(tenant_id=tenant_id)
-    except Exception:  # noqa: BLE001 - never let memory failures break chat
-        return []
+from app.core.web_search import WEB_SEARCH_TOOL, run_web_search_tool
 from app.modules.emissions_mrv.agent import (
     BUILD_GHGEMP_REPORT_TOOL,
     BUILD_REPORT_TOOL,
@@ -59,9 +52,21 @@ from app.modules.emissions_mrv.agent import (
     run_reconcile_flaring_tool,
     run_venting_tool,
 )
-from app.core.web_search import WEB_SEARCH_TOOL, run_web_search_tool
 from app.modules.ptw.agent import BUILD_PTW_TEMPLATE_TOOL, run_build_ptw_template_tool
 from app.modules.well_control.agent import KILL_SHEET_TOOL, run_kill_sheet_tool
+
+
+def _tenant_memories_for(tenant_id: str) -> list[str]:
+    """Load active memory bodies for a tenant, sorted oldest-first. Returns
+    an empty list on any read error so a misconfigured memory store can never
+    block a chat turn. Slice 2 of the learning loop."""
+    if not tenant_id:
+        return []
+    try:
+        from app.db.tenant_memory_repository import get_tenant_memory_repository
+        return get_tenant_memory_repository().list_for_prompt(tenant_id=tenant_id)
+    except Exception:  # noqa: BLE001 - never let memory failures break chat
+        return []
 
 
 def _resolve_asset_context(*, tenant_id: str, asset_id: str):
@@ -151,6 +156,7 @@ MODULE_TOOLS = {
         "web_search",
     ],
     "ptw": ["build_ptw_template", "web_search"],
+    "research": ["web_search"],
     "general": ["web_search"],
 }
 
@@ -321,6 +327,7 @@ class Orchestrator:
     def __init__(self, retriever=None, llm: LLMService | None = None) -> None:
         self.retriever = retriever
         self.llm = llm or LLMService()
+        self.synthesis = AnswerSynthesisService(llm=self.llm)
 
     def _evidence_pack(
         self,
@@ -392,6 +399,7 @@ class Orchestrator:
 
         # 2b. retrieval
         retrieved_text, retrieved_clauses = "", []
+        retrieved_internal_chunks: list[dict[str, Any]] = []
         retrieved_citations: list[dict[str, Any]] = []
         retrieved_chunk_ids: list[int] = []
         if self.retriever is not None:
@@ -402,6 +410,7 @@ class Orchestrator:
                 assets=retrieval_assets or None,
             )
             retrieved_text = "\n\n".join(h["text"] for h in hits)
+            retrieved_internal_chunks = [dict(hit) for hit in hits]
             retrieved_clauses = [h.get("clause") for h in hits if h.get("clause")]
             retrieved_citations = [
                 {"title": h.get("title"), "revision": h.get("revision"), "clause": h.get("clause")}
@@ -420,7 +429,8 @@ class Orchestrator:
         system = build_system_prompt(
             module=module, user_role=user_role, jurisdiction=jurisdiction,
             asset_context=prompt_asset_context, retrieved_context=retrieved_text or None,
-            offline_mode=offline_mode, has_attachments=has_attachments,
+            offline_mode=offline_mode, disable_web_search=disable_web_search,
+            has_attachments=has_attachments,
             tenant_memories=_tenant_memories_for(tenant_id),
         )
 
@@ -456,10 +466,12 @@ class Orchestrator:
 
         # 5. execute deterministic tools
         tool_results: list[dict[str, Any]] = []
+        synthesis_result = None
         numbers_from_tools = False
         if resp.tool_calls:
-            numbers_from_tools = True
-            tool_blocks = []
+            numbers_from_tools = any(
+                call.get("name") != "web_search" for call in resp.tool_calls
+            )
             for call in resp.tool_calls:
                 tool_name = call.get("name")
                 schema_fn = TOOL_REGISTRY.get(tool_name) if isinstance(tool_name, str) else None
@@ -521,20 +533,31 @@ class Orchestrator:
                     "input": audit_tool_input,
                     "result": result,
                 })
-                tool_blocks.append({
-                    "role": "user",
-                    "content": [{"type": "tool_result", "tool_use_id": call.get("id"),
-                                 "content": str(result)}],
-                })
-            # 6. feed results back for the final natural-language answer
-            messages.append(_assistant_turn_with_tool_use(resp.text, resp.tool_calls))
-            messages += tool_blocks
+            # 6. Normalize and filter all evidence, then force a prose-only
+            # synthesis pass. Search snippets remain evidence and are never
+            # promoted directly into the assistant answer.
+            web_results, web_attempted, web_disabled = web_results_from_tools(
+                tool_results
+            )
             try:
-                resp = await _complete_with_optional_thinking(
-                    self.llm,
-                    system,
-                    messages,
-                    tools=tools or None,
+                synthesis_result = await self.synthesis.synthesize(
+                    AnswerSynthesisRequest(
+                        original_question=user_text,
+                        tenant_id=tenant_id,
+                        user_role=user_role,
+                        jurisdiction=jurisdiction,
+                        asset_context=prompt_asset_context,
+                        retrieved_internal_chunks=retrieved_internal_chunks,
+                        web_search_results=web_results,
+                        tool_calculation_results=calculation_results_from_tools(
+                            tool_results
+                        ),
+                        safety_flags=flags,
+                        module_name=module,
+                        web_search_enabled=not disable_web_search,
+                        web_search_attempted=web_attempted,
+                        web_search_disabled=web_disabled,
+                    ),
                     thinking_mode=thinking_mode,
                 )
             except LLMConfigurationError as exc:
@@ -558,6 +581,14 @@ class Orchestrator:
                         disable_web_search=disable_web_search,
                     ),
                 )
+            flags = list(dict.fromkeys([*flags, *synthesis_result.flags]))
+            retrieved_citations = synthesis_result.citations
+            resp = LLMResponse(
+                text=synthesis_result.final_answer_markdown,
+                tool_calls=[],
+                usage=synthesis_result.usage,
+                model=synthesis_result.model,
+            )
 
         answer_text = _safe_answer_text(resp.text, tool_results)
         answer = prefix + answer_text
@@ -583,14 +614,20 @@ class Orchestrator:
             # turn-attribution cache so feedback can later move weights.
             "retrieved_chunk_ids": retrieved_chunk_ids,
         }
-        evidence_pack = self._evidence_pack(
-            citations=retrieved_citations,
-            tool_results=tool_results,
-            flags=flags,
-            module=module,
-            offline_mode=offline_mode,
-            disable_web_search=disable_web_search,
+        evidence_pack = (
+            synthesis_result.evidence_pack
+            if synthesis_result is not None
+            else self._evidence_pack(
+                citations=retrieved_citations,
+                tool_results=tool_results,
+                flags=flags,
+                module=module,
+                offline_mode=offline_mode,
+                disable_web_search=disable_web_search,
+            )
         )
+        if synthesis_result is not None:
+            audit.update(synthesis_result.audit_metadata)
         return Turn(answer=answer, tool_results=tool_results, flags=flags, audit=audit,
                     citations=retrieved_citations, evidence_pack=evidence_pack)
 
@@ -648,6 +685,7 @@ class Orchestrator:
         )
 
         retrieved_text, retrieved_clauses, retrieved_citations = "", [], []
+        retrieved_internal_chunks: list[dict[str, Any]] = []
         retrieved_chunk_ids: list[int] = []
         if self.retriever is not None:
             hits = await self.retriever.retrieve(
@@ -657,6 +695,7 @@ class Orchestrator:
                 assets=retrieval_assets or None,
             )
             retrieved_text = "\n\n".join(h["text"] for h in hits)
+            retrieved_internal_chunks = [dict(hit) for hit in hits]
             retrieved_clauses = [h.get("clause") for h in hits if h.get("clause")]
             retrieved_chunk_ids = [
                 int(h["id"]) for h in hits if isinstance(h.get("id"), (int, float))
@@ -668,19 +707,20 @@ class Orchestrator:
                     "clause": hit.get("clause"),
                 }
                 retrieved_citations.append(citation)
-                yield {"event": "citation", "data": citation}
 
         has_attachments = bool(attachments)
         system = build_system_prompt(
             module=module, user_role=user_role, jurisdiction=jurisdiction,
             asset_context=prompt_asset_context, retrieved_context=retrieved_text or None,
-            offline_mode=offline_mode, has_attachments=has_attachments,
+            offline_mode=offline_mode, disable_web_search=disable_web_search,
+            has_attachments=has_attachments,
             tenant_memories=_tenant_memories_for(tenant_id),
         )
         tools = [TOOL_REGISTRY[t][0] for t in _tools_for(module, disable_web_search)]
         user_content = _build_user_message_content(user_text, attachments)
         messages: list[dict[str, Any]] = [{"role": "user", "content": user_content}]
         tool_results: list[dict[str, Any]] = []
+        synthesis_result = None
         numbers_from_tools = False
 
         try:
@@ -696,8 +736,10 @@ class Orchestrator:
                 usage = dict(resp.usage or {})
                 answer_text = resp.text or ""
                 if resp.tool_calls:
-                    numbers_from_tools = True
-                    tool_blocks = []
+                    numbers_from_tools = any(
+                        call.get("name") != "web_search"
+                        for call in resp.tool_calls
+                    )
                     for call in resp.tool_calls:
                         result_event = self._execute_tool_call(
                             call, flags=flags, tenant_id=tenant_id, module=module,
@@ -733,44 +775,71 @@ class Orchestrator:
                             "input": tool_input,
                             "result": result,
                         })
-                        # Web-search results carry their own citation set (title +
-                        # URL of each source). Surface them alongside the RAG
-                        # citations so the chat UI can render click-through chips
-                        # and the audit log keeps a single citations list.
-                        for citation in _web_search_citations(call.get("name"), result):
-                            retrieved_citations.append(citation)
-                            yield {"event": "citation", "data": citation}
-                        tool_blocks.append({
-                            "role": "user",
-                            "content": [{
-                                "type": "tool_result",
-                                "tool_use_id": call.get("id"),
-                                # JSON-serialise the result so Claude sees clean
-                                # key/value text - str(dict) gives Python repr
-                                # (single quotes, escaped strings) which the
-                                # model treats as low-signal noise and answers
-                                # tersely or not at all.
-                                "content": json.dumps(result, default=str, ensure_ascii=False),
-                            }],
-                        })
-                    messages.append(_assistant_turn_with_tool_use(resp.text, resp.tool_calls))
-                    messages += tool_blocks
-                    # Pass tools=None on the final call so the model commits to
-                    # prose instead of chaining another tool_use (which the
-                    # single-round dispatcher would silently drop, leaving the
-                    # answer empty and the UI stuck on "Thinking").
-                    final: dict[str, Any] = {"text": "", "tool_calls": [], "usage": {}, "model": ""}
-                    async for event in self._stream_llm_to_events(
-                        system, messages, None, final, emit=True,
-                        thinking_mode=thinking_mode,
-                    ):
-                        yield event
-                    answer_text = _safe_answer_text(final["text"], tool_results)
-                    if not final["text"].strip() and answer_text:
-                        yield {"event": "token", "data": {"text": answer_text}}
-                    model = final["model"]
-                    usage = final["usage"]
+                    web_results, web_attempted, web_disabled = web_results_from_tools(
+                        tool_results
+                    )
+                    prepared = self.synthesis.prepare(
+                        AnswerSynthesisRequest(
+                            original_question=user_text,
+                            tenant_id=tenant_id,
+                            user_role=user_role,
+                            jurisdiction=jurisdiction,
+                            asset_context=prompt_asset_context,
+                            retrieved_internal_chunks=retrieved_internal_chunks,
+                            web_search_results=web_results,
+                            tool_calculation_results=calculation_results_from_tools(
+                                tool_results
+                            ),
+                            safety_flags=flags,
+                            module_name=module,
+                            web_search_enabled=not disable_web_search,
+                            web_search_attempted=web_attempted,
+                            web_search_disabled=web_disabled,
+                        )
+                    )
+                    if prepared.sources or calculation_results_from_tools(tool_results):
+                        # Buffer the prose-only synthesis so citation markers
+                        # can be validated before answer text reaches the UI.
+                        final: dict[str, Any] = {
+                            "text": "",
+                            "tool_calls": [],
+                            "usage": {},
+                            "model": "",
+                        }
+                        async for _ in self._stream_llm_to_events(
+                            prepared.system_prompt,
+                            prepared.messages,
+                            None,
+                            final,
+                            emit=False,
+                            thinking_mode=thinking_mode,
+                        ):
+                            pass
+                        synthesis_result = self.synthesis.finalize(
+                            prepared,
+                            text=final["text"],
+                            model=final["model"],
+                            usage=final["usage"],
+                        )
+                    else:
+                        synthesis_result = self.synthesis.finalize(
+                            prepared,
+                            text="",
+                        )
+                    flags = list(
+                        dict.fromkeys([*flags, *synthesis_result.flags])
+                    )
+                    retrieved_citations = synthesis_result.citations
+                    answer_text = synthesis_result.final_answer_markdown
+                    for citation in retrieved_citations:
+                        yield {"event": "citation", "data": citation}
+                    for chunk in _answer_chunks(answer_text):
+                        yield {"event": "token", "data": {"text": chunk}}
+                    model = synthesis_result.model
+                    usage = synthesis_result.usage
                 elif answer_text:
+                    for citation in retrieved_citations:
+                        yield {"event": "citation", "data": citation}
                     yield {"event": "token", "data": {"text": answer_text}}
             else:
                 final = {"text": "", "tool_calls": [], "usage": {}, "model": ""}
@@ -827,14 +896,20 @@ class Orchestrator:
             # Slice 3: see handle() above.
             "retrieved_chunk_ids": retrieved_chunk_ids,
         }
-        evidence_pack = self._evidence_pack(
-            citations=retrieved_citations,
-            tool_results=tool_results,
-            flags=flags,
-            module=module,
-            offline_mode=offline_mode,
-            disable_web_search=disable_web_search,
+        evidence_pack = (
+            synthesis_result.evidence_pack
+            if synthesis_result is not None
+            else self._evidence_pack(
+                citations=retrieved_citations,
+                tool_results=tool_results,
+                flags=flags,
+                module=module,
+                offline_mode=offline_mode,
+                disable_web_search=disable_web_search,
+            )
         )
+        if synthesis_result is not None:
+            audit.update(synthesis_result.audit_metadata)
         yield {"event": "done", "data": {
             "answer": answer,
             "tool_results": tool_results,
@@ -926,239 +1001,42 @@ class Orchestrator:
         return {"input": audit_tool_input, "result": result}
 
 
-def _assistant_turn_with_tool_use(text: str, tool_calls: list[dict[str, Any]]) -> dict[str, Any]:
-    """Rebuild the assistant turn that owns the tool_use blocks.
-
-    Anthropic's Messages API rejects a follow-up turn whose tool_result blocks
-    reference a tool_use_id that did not appear in the previous assistant turn.
-    Plain-text echoes ("[tool_use]") satisfy our internal types but fail the
-    wire validator with a 400. We have to round-trip the actual blocks.
-    """
-    blocks: list[dict[str, Any]] = []
-    if text:
-        blocks.append({"type": "text", "text": text})
-    for call in tool_calls:
-        blocks.append({
-            "type": "tool_use",
-            "id": call.get("id"),
-            "name": call.get("name"),
-            "input": call.get("input") or {},
-        })
-    return {"role": "assistant", "content": blocks}
-
-
-def _web_search_citations(tool_name: Any, result: Any) -> list[dict[str, Any]]:
-    """Pull citation chips out of a web_search tool result.
-
-    Each result row gives us a title + URL. The frontend's Citation type
-    treats ``revision`` / ``clause`` as optional and renders chips with a URL
-    as click-throughs. Returns an empty list for any other tool, including
-    web_search when it returned an error or disabled payload.
-    """
-    if tool_name != "web_search" or not isinstance(result, dict):
-        return []
-    rows = result.get("results")
-    if not isinstance(rows, list):
-        return []
-    out: list[dict[str, Any]] = []
-    seen_urls: set[str] = set()
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        url = row.get("url")
-        title = row.get("title")
-        if not isinstance(url, str) or not url:
-            continue
-        normalized_url = url.strip().lower()
-        if normalized_url in seen_urls:
-            continue
-        seen_urls.add(normalized_url)
-        out.append({
-            "title": title if isinstance(title, str) and title else url,
-            "revision": None,
-            "clause": None,
-            "url": url,
-        })
-    return out
-
-
 def _safe_answer_text(text: str | None, tool_results: list[dict[str, Any]]) -> str:
     """Never finish a tool-backed turn with an empty answer.
 
-    Some providers can return a valid final message with citations/tool output
-    but no prose after a web-search tool result. The UI then has sources but no
-    answer. Build a conservative summary from the returned snippets rather than
-    exposing an empty assistant bubble.
+    Tool evidence must go through ``AnswerSynthesisService``. This fallback is
+    deliberately generic so raw retrieval snippets can never become the answer.
     """
     clean = (text or "").strip()
     if clean:
         return text or ""
-    fallback = _fallback_answer_from_web_results(tool_results)
-    if fallback:
-        return fallback
     if tool_results:
-        # Matches the frontend's interruption framing so the two layers
-        # speak the same way to the user when the model returns nothing
-        # readable. See ChatClient.tsx::fallbackCompletedAnswer.
-        return "The response was interrupted after the tools returned. Please retry to get the full answer."
+        return (
+            "The evidence was collected, but the final analyst synthesis could not "
+            "be completed. Raw search excerpts are not shown as a substitute. "
+            "Please retry the request."
+        )
     return ""
 
 
-def _fallback_answer_from_web_results(tool_results: list[dict[str, Any]]) -> str:
-    rows: list[dict[str, Any]] = []
-    for tr in tool_results:
-        if tr.get("tool") != "web_search":
-            continue
-        result = tr.get("result")
-        if not isinstance(result, dict):
-            continue
-        raw_rows = result.get("results")
-        if isinstance(raw_rows, list):
-            rows.extend(row for row in raw_rows if isinstance(row, dict))
-
-    rows = _dedupe_web_summary_rows(rows)
-    if not rows:
-        return ""
-
-    bullets: list[str] = []
-    for row in rows[:5]:
-        title = _clean_summary_part(row.get("title")) or "Source"
-        snippet = _clean_summary_part(row.get("snippet"))
-        if snippet:
-            bullets.append(_format_web_summary_bullet(title, snippet))
-        else:
-            bullets.append(f"- {title}: this source was returned for the question, but no snippet was available.")
-
-    return (
-        "I found current public sources. Based on the returned snippets:\n\n"
-        + "\n".join(bullets)
-        + "\n\nVerify company identity, ownership, and operating status against the linked sources before relying on it."
-    )
-
-
-def _dedupe_web_summary_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for row in rows:
-        title = _clean_summary_part(row.get("title"))
-        snippet = _clean_summary_part(row.get("snippet"))
-        url = _clean_summary_part(row.get("url"))
-        url_key = _normalize_summary_key(url)
-        content_key = "|".join(
-            part
-            for part in (
-                _normalize_summary_key(title),
-                _normalize_summary_key(_truncate_words(snippet, 18)),
+def _answer_chunks(text: str, limit: int = 180) -> list[str]:
+    """Split validated Markdown into paced SSE chunks without changing text."""
+    if not text:
+        return []
+    chunks: list[str] = []
+    start = 0
+    while start < len(text):
+        end = min(len(text), start + limit)
+        if end < len(text):
+            boundary = max(
+                text.rfind("\n", start, end),
+                text.rfind(" ", start, end),
             )
-            if part
-        )
-        keys = [key for key in (url_key, content_key) if key]
-        if not keys or any(key in seen for key in keys):
-            continue
-        seen.update(keys)
-        out.append(row)
-    return out
-
-
-def _format_web_summary_bullet(title: str, snippet: str) -> str:
-    summary = _truncate_words(snippet, 34)
-    if _same_summary_lead(title, snippet):
-        return f"- {summary}"
-    return f"- {title}: {summary}"
-
-
-def _same_summary_lead(left: str, right: str) -> bool:
-    left_words = _normalize_summary_key(left).split()
-    right_words = _normalize_summary_key(right).split()
-    if len(left_words) < 3 or len(right_words) < 3:
-        return False
-    lead = left_words[: min(len(left_words), 8)]
-    return right_words[: len(lead)] == lead
-
-
-def _normalize_summary_key(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
-
-
-def _clean_summary_part(value: Any) -> str:
-    if value is None:
-        return ""
-    text = str(value)
-    # First pass: drop markup that web crawlers sometimes pull into the
-    # snippet field. Tavily occasionally captures inline SVG sprites,
-    # data: URIs, and HTML attribute fragments as part of the snippet -
-    # the result is unreadable garbage like ``'/%3E%3Cpath d='M16.0001
-    # 7.9996c0 4.418...'`` arriving in the bullet text. Strip before the
-    # markdown / whitespace passes so what reaches the user is prose only.
-    text = _strip_markup_fragments(text)
-    text = " ".join(text.split())
-    # Search snippets often contain raw page markdown ("###", "#", "**").
-    # Strip those presentation markers before turning snippets into user copy.
-    text = text.replace("#", "")
-    text = text.replace("*", "")
-    text = text.replace("_", "")
-    text = re.sub(r"\s+([:;,.])", r"\1", text)
-    return text.strip()
-
-
-# Conservative markers for "this snippet contains leaked markup". Each
-# matches something a real prose answer almost never contains.
-_MARKUP_SIGNALS = (
-    "%3C",      # url-encoded '<'
-    "%3E",      # url-encoded '>'
-    "%23",      # url-encoded '#' (common in url(#gradientId))
-    "<svg",
-    "</svg",
-    "<path",
-    "<polygon",
-    "viewBox=",
-    "xmlns=",
-)
-
-
-def _strip_markup_fragments(text: str) -> str:
-    """Remove HTML / SVG / URL-encoded markup fragments while preserving the
-    surrounding prose. Conservative: only runs the expensive substitutions
-    when the cheap signal check fires, so well-formed snippets are untouched."""
-    if not any(signal in text for signal in _MARKUP_SIGNALS):
-        return text
-    import urllib.parse as _u
-
-    # 1) Decode common URL-encoded markup characters so the regex passes
-    #    below can see the actual tags. Only the markup-relevant codepoints
-    #    are touched so an unrelated %20 in a real URL isn't mangled.
-    decoded = text
-    for enc, dec in (("%3C", "<"), ("%3E", ">"), ("%23", "#")):
-        decoded = decoded.replace(enc, dec).replace(enc.lower(), dec)
-
-    # 2) Drop complete tags, orphan opening fragments (search-engine
-    #    snippets often truncate mid-tag), and SVG path-data attribute
-    #    payloads ("d='M16.0001 7.9996c0 4.418-3.5815...'").
-    decoded = re.sub(r"<[^>]*>", " ", decoded)              # complete tags
-    decoded = re.sub(r"</?\w+[^<]*$", " ", decoded)         # trailing half-tags
-    decoded = re.sub(r"\b\w+\s*=\s*'[^']*'", " ", decoded)  # attr='...'
-    decoded = re.sub(r'\b\w+\s*=\s*"[^"]*"', " ", decoded)  # attr="..."
-
-    # 3) Path data sometimes survives outside attribute quotes when the
-    #    snippet was truncated awkwardly. Matches a path command letter
-    #    followed by a clear digit/coord cluster - tight enough to avoid
-    #    eating a sentence that just happens to contain 'L 16'.
-    decoded = re.sub(
-        r"[MmLlHhVvCcSsQqTtAaZz](?:\s*[-+]?\d+(?:\.\d+)?){3,}",
-        " ",
-        decoded,
-    )
-
-    # 4) Stray quote / slash debris from the truncations above.
-    decoded = re.sub(r"[/']{2,}", " ", decoded)
-    return decoded
-
-
-def _truncate_words(value: str, max_words: int) -> str:
-    words = value.split()
-    if len(words) <= max_words:
-        return value
-    return " ".join(words[:max_words]).rstrip(".,;:") + "..."
+            if boundary > start:
+                end = boundary + 1
+        chunks.append(text[start:end])
+        start = end
+    return chunks
 
 
 def _tool_input_as_dict(value: Any) -> dict[str, Any]:

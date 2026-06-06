@@ -80,6 +80,31 @@ class FakeLLM:
         )
 
 
+def test_model_unavailable_fallback_does_not_dump_source_snippets(tmp_path):
+    service = ResearchService(
+        repository=LocalJsonResearchRepository(tmp_path / "research.jsonl"),
+        llm=FakeLLM(),
+        document_repository=FakeDocuments(),
+    )
+    markdown = service._source_digest_report(
+        "Assess methane readiness",
+        [
+            {
+                "id": "S1",
+                "title": "NUPRC Methane Guidance",
+                "snippet": "RAW GOVERNED EXCERPT THAT MUST NOT BE THE ANSWER",
+                "reliability": "primary",
+                "freshness": "current",
+            }
+        ],
+        ["Current implementation status was not verified."],
+        ["Decision support only."],
+    )
+
+    assert "RAW GOVERNED EXCERPT" not in markdown
+    assert "Raw source excerpts are not shown" in markdown
+
+
 @pytest.fixture(autouse=True)
 def wire(monkeypatch, tmp_path):
     monkeypatch.setattr(deps, "get_settings", jwt_settings)

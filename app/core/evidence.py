@@ -96,13 +96,21 @@ def _source_entries(citations: list[dict[str, Any]]) -> list[dict[str, Any]]:
         title = _safe_text(citation.get("title")) or ("Current source" if source_type == "web" else "Uploaded document")
         revision = _safe_text(citation.get("revision"))
         clause = _safe_text(citation.get("clause"))
+        source_id = _safe_text(citation.get("source_id"))
+        reliability = _safe_text(citation.get("reliability"))
         key = (source_type, title, revision or "", clause or "")
         if key in seen:
             continue
         seen.add(key)
         entry = {
             "type": source_type,
-            "label": _source_label(title=title, revision=revision, clause=clause),
+            "label": _source_label(
+                title=title,
+                revision=revision,
+                clause=clause,
+                source_id=source_id,
+                reliability=reliability,
+            ),
         }
         if source_type == "web":
             entry["url"] = url
@@ -197,12 +205,21 @@ def _confidence_label(
     return {"label": "Low", "reason": "No external source or deterministic calculation was attached."}
 
 
-def _source_label(*, title: str, revision: str | None, clause: str | None) -> str:
-    parts = [title]
+def _source_label(
+    *,
+    title: str,
+    revision: str | None,
+    clause: str | None,
+    source_id: str | None = None,
+    reliability: str | None = None,
+) -> str:
+    parts = [source_id, title] if source_id else [title]
     if revision:
         parts.append(revision)
     if clause:
         parts.append(f"section {clause}")
+    if reliability:
+        parts.append(f"{reliability} reliability")
     return " - ".join(parts)
 
 

@@ -49,6 +49,15 @@ first for management.
 """
 
 MODULE_PREAMBLES = {
+    "research": (
+        "<module>Research intelligence</module>\n"
+        "Treat the request as governed oil-and-gas research. Search current public "
+        "sources when permitted, combine them with relevant tenant documents, and "
+        "produce a structured analyst answer rather than a snippet list. Prioritize "
+        "official regulators, government and intergovernmental sources, company "
+        "filings, investor-relations material, and recognized technical bodies. "
+        "Clearly separate verified findings, assumptions, and verification gaps."
+    ),
     "well_control": WELL_CONTROL_PREAMBLE,
     "emissions_mrv": (
         "<module>Emissions / MRV intelligence</module>\n"
@@ -114,6 +123,7 @@ def build_system_prompt(
     asset_context: str | None = None,
     retrieved_context: str | None = None,
     offline_mode: bool = False,
+    disable_web_search: bool = False,
     has_attachments: bool = False,
     tenant_memories: list[str] | None = None,
 ) -> str:
@@ -127,6 +137,11 @@ def build_system_prompt(
         ctx.append(f"asset_context: {asset_context}")
     if offline_mode:
         ctx.append("offline_mode: true (only on-device cache available)")
+    if disable_web_search:
+        ctx.append(
+            "web_search: disabled (state clearly that current public claims were "
+            "not checked; do not imply that a live lookup was performed)"
+        )
     if ctx:
         parts.append("<runtime_context>\n" + "\n".join(ctx) + "\n</runtime_context>")
     if retrieved_context:

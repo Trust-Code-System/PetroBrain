@@ -54,7 +54,15 @@ describe('Message - kill-sheet stream', () => {
       data: { tool: 'build_kill_sheet', id: 't1', input: { tvd_ft: 10000, omw_ppg: 9.6 } },
     },
     { event: 'tool_result', data: { tool: 'build_kill_sheet', result: killSheetResult } },
-    { event: 'citation', data: { title: 'Kick SOP', revision: 'Rev 1', clause: '2.1' } },
+    {
+      event: 'citation',
+      data: {
+        title: 'Kick SOP',
+        revision: 'Rev 1',
+        clause: '2.1',
+        reliability: 'primary',
+      },
+    },
     { event: 'token', data: { text: 'Kill mud weight is 10.37 ppg. Verify before pumping.' } },
     {
       event: 'done',
@@ -119,6 +127,7 @@ describe('Message - kill-sheet stream', () => {
     // span - non-url SOP citations don't link out).
     const sources = screen.getByRole('region', { name: /Sources/i });
     expect(within(sources).getByText(/Kick SOP/)).toBeInTheDocument();
+    expect(within(sources).getByText('primary')).toBeInTheDocument();
 
     // Streamed answer text is visible.
     expect(

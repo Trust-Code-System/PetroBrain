@@ -46,8 +46,10 @@ const SECTIONS: SectionDef[] = [
 
 const MODULE_OPTIONS: { value: Module; label: string; description: string }[] = [
   { value: 'general', label: 'General', description: 'Domain-locked Q&A across SOPs and standards.' },
+  { value: 'research', label: 'Research', description: 'Cited sector, regulatory, market, and investment analysis.' },
   { value: 'well_control', label: 'Well Control', description: 'Kill sheets, kick detection, shut-in math.' },
   { value: 'emissions_mrv', label: 'Emissions / MRV', description: 'NUPRC Tier-3 inventories + GHGEMP.' },
+  { value: 'ptw', label: 'PTW', description: 'Controlled permit-to-work templates and verification.' },
 ];
 
 const THEME_OPTIONS: { value: Theme; label: string; description: string }[] = [

@@ -11,7 +11,7 @@
 
 export type Role = 'platform_admin' | 'admin' | 'engineer' | 'field' | 'hse';
 
-export type Module = 'general' | 'well_control' | 'emissions_mrv';
+export type Module = 'general' | 'research' | 'well_control' | 'emissions_mrv' | 'ptw';
 
 export interface Principal {
   tenantId: string;
@@ -22,6 +22,7 @@ export interface Principal {
 }
 
 export interface Citation {
+  source_id?: string | null;
   title: string | null;
   revision: string | null;
   clause: string | null;
@@ -31,6 +32,8 @@ export interface Citation {
    * inside the system instead of an external page).
    */
   url?: string | null;
+  reliability?: 'primary' | 'high' | 'medium' | 'low' | 'unknown' | null;
+  freshness?: 'current' | 'dated' | 'unknown' | null;
 }
 
 export interface ToolResult<TInput = unknown, TOutput = unknown> {

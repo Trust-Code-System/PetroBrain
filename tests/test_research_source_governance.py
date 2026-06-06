@@ -71,3 +71,19 @@ def test_annotation_marks_primary_sources_and_out_of_range_dates():
     assert annotated[0]["freshness"] == "dated"
     assert annotated[1]["reliability"] == "primary"
     assert outdated == ["S1: Regulator notice"]
+
+
+def test_official_regulator_subdomain_is_primary():
+    annotated, _ = annotate_sources(
+        [
+            {
+                "source_type": "web",
+                "title": "Regulator guidance",
+                "url": "https://docs.nuprc.gov.ng/guidance",
+            }
+        ],
+        date_from=None,
+        date_to=None,
+    )
+
+    assert annotated[0]["reliability"] == "primary"

@@ -53,9 +53,15 @@ def reliability_for(source: dict[str, Any]) -> tuple[str, str]:
     if source.get("source_type") == "internal_document":
         return "primary", "Tenant-controlled internal document."
     host = normalize_domain(source.get("url"))
-    if host in PRIMARY_DOMAINS or host.endswith(".gov"):
+    if (
+        any(host == domain or host.endswith("." + domain) for domain in PRIMARY_DOMAINS)
+        or host.endswith((".gov", ".gov.ng"))
+    ):
         return "primary", "Official regulator, government, or intergovernmental source."
-    if host in HIGH_RELIABILITY_DOMAINS:
+    if any(
+        host == domain or host.endswith("." + domain)
+        for domain in HIGH_RELIABILITY_DOMAINS
+    ):
         return "high", "Recognized standards, multilateral, or technical institution."
     if host:
         return "medium", "Public web source; verify important claims against a primary source."

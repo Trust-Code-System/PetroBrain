@@ -100,6 +100,37 @@ def stream_chat(payload):
         return parse_sse("".join(response.iter_text()))
 
 
+def test_chat_route_overrides_general_with_research_intent(monkeypatch):
+    observed = {}
+
+    class RoutingOrchestrator:
+        async def stream_handle(self, message, **kwargs):
+            observed["message"] = message
+            observed["module"] = kwargs["module"]
+            yield {
+                "event": "done",
+                "data": {
+                    "answer": "Research answer.",
+                    "tool_results": [],
+                    "flags": [],
+                    "audit": {"module": kwargs["module"]},
+                    "evidence_pack": {},
+                },
+            }
+
+    monkeypatch.setattr(routes_chat, "_orch", RoutingOrchestrator())
+
+    events = stream_chat(
+        {
+            "message": "Run a deep research report on Nigeria upstream licensing.",
+            "module": "general",
+        }
+    )
+
+    assert observed["module"] == "research"
+    assert events[-1][1]["audit"]["module"] == "research"
+
+
 def test_stream_chat_emits_tokens_then_done(monkeypatch):
     # The "general" module now exposes the web_search tool, so the orchestrator
     # makes a non-streaming complete() call first to detect any tool_use. When
@@ -148,7 +179,7 @@ def test_stream_chat_emits_tool_call_tool_result_tokens_done(monkeypatch):
     assert events[-1][1]["flags"] == []
 
 
-def test_stream_chat_summarizes_web_results_when_final_answer_is_empty(monkeypatch):
+def test_stream_chat_synthesizes_web_results_into_structured_answer(monkeypatch):
     schema, _ = TOOL_REGISTRY["web_search"]
     monkeypatch.setitem(
         TOOL_REGISTRY,
@@ -178,7 +209,17 @@ def test_stream_chat_summarizes_web_results_when_final_answer_is_empty(monkeypat
         usage={"input": 10, "output": 5},
         model="fake-model",
     )
-    llm = StreamingLLM(stream_tokens=[], complete_responses=[first])
+    llm = StreamingLLM(
+        stream_tokens=[
+            "# Metropole Petroleum Overview\n\n",
+            "## Executive summary\nMetropole appears in public oil and gas records [S1].\n\n",
+            "## What I checked\n- Public corporate source.\n\n",
+            "## What I could not verify\n- Current ownership.\n\n",
+            "## Confidence\nMedium.\n\n",
+            "## Sources / citations\n- [S1] Metropole Petroleum Limited",
+        ],
+        complete_responses=[first],
+    )
     monkeypatch.setattr(routes_chat, "_orch", Orchestrator(llm=llm))
 
     events = stream_chat({
@@ -187,15 +228,17 @@ def test_stream_chat_summarizes_web_results_when_final_answer_is_empty(monkeypat
     })
 
     names = [name for name, _ in events]
-    assert names == ["tool_call", "tool_result", "citation", "token", "done"]
-    assert "I found current public sources" in events[-2][1]["text"]
-    assert "Metropole Petroleum Limited" in events[-2][1]["text"]
-    assert "#" not in events[-2][1]["text"]
-    assert "*" not in events[-2][1]["text"]
-    assert events[-1][1]["answer"] == events[-2][1]["text"]
+    assert names[:3] == ["tool_call", "tool_result", "citation"]
+    assert names[-1] == "done"
+    answer = "".join(data["text"] for name, data in events if name == "token")
+    assert "# Metropole Petroleum Overview" in answer
+    assert "## Executive summary" in answer
+    assert "I found current public sources" not in answer
+    assert "Based on the returned snippets" not in answer
+    assert events[-1][1]["answer"] == answer
 
 
-def test_stream_chat_dedupes_repeated_web_summary_rows(monkeypatch):
+def test_stream_chat_dedupes_repeated_web_sources(monkeypatch):
     schema, _ = TOOL_REGISTRY["web_search"]
     duplicate_title = "From the Right: Kola Kelani (CFO, Bono Energy Limited), Adejare..."
     duplicate_snippet = (
@@ -240,7 +283,13 @@ def test_stream_chat_dedupes_repeated_web_summary_rows(monkeypatch):
         usage={"input": 10, "output": 5},
         model="fake-model",
     )
-    llm = StreamingLLM(stream_tokens=[], complete_responses=[first])
+    llm = StreamingLLM(
+        stream_tokens=[
+            "# Bono Energy Overview\n\n## Executive summary\n",
+            "Public records identify relevant company information [S1] [S2].",
+        ],
+        complete_responses=[first],
+    )
     monkeypatch.setattr(routes_chat, "_orch", Orchestrator(llm=llm))
 
     events = stream_chat({
@@ -248,10 +297,10 @@ def test_stream_chat_dedupes_repeated_web_summary_rows(monkeypatch):
         "module": "general",
     })
 
-    answer = events[-2][1]["text"]
-    assert answer.count("Kola Kelani") == 1
-    assert answer.count("From the Right:") == 1
-    assert "Employee Directory" in answer
+    citations = [data for name, data in events if name == "citation"]
+    assert len(citations) == 2
+    assert sum("From the Right" in citation["title"] for citation in citations) == 1
+    assert any("Employee Directory" in citation["title"] for citation in citations)
 
 
 def test_stream_chat_guardrail_refusal_emits_flag_token_done(monkeypatch):
