@@ -23,6 +23,8 @@ function blankAssistant(): AssistantMessage {
     toolResults: [],
     evidencePack: null,
     flags: [],
+    workingSteps: [],
+    progressSources: [],
     streaming: true,
     createdAt: 0,
   };
@@ -182,6 +184,70 @@ describe('Message - kill-sheet stream', () => {
     expect(screen.queryByText('web_search')).not.toBeInTheDocument();
     expect(screen.queryByText(/query:/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/private search terms/i)).not.toBeInTheDocument();
+  });
+
+  it('shows live progress immediately and allows the checklist to collapse and reopen', async () => {
+    const user = userEvent.setup();
+    const message = drive([
+      {
+        event: 'status',
+        data: {
+          type: 'status',
+          step_id: 'understand',
+          status: 'completed',
+          message: 'Understanding your question.',
+          timestamp: '2026-06-06T10:00:00Z',
+        },
+      },
+      {
+        event: 'research_plan',
+        data: {
+          type: 'research_plan',
+          step_id: 'plan',
+          status: 'completed',
+          message: 'Research plan created.',
+          timestamp: '2026-06-06T10:00:01Z',
+        },
+      },
+      {
+        event: 'source_search_started',
+        data: {
+          type: 'source_search_started',
+          step_id: 'source_search',
+          status: 'running',
+          message: 'Searching regulator and industry sources...',
+          timestamp: '2026-06-06T10:00:02Z',
+        },
+      },
+      {
+        event: 'source_found',
+        data: {
+          type: 'source_found',
+          step_id: 'source_search',
+          status: 'running',
+          message: 'Found NUPRC source',
+          timestamp: '2026-06-06T10:00:03Z',
+          source: {
+            title: 'NUPRC upstream overview',
+            url: 'https://nuprc.gov.ng/upstream',
+            reliability: 'official',
+          },
+        },
+      },
+    ]) as AssistantMessage;
+
+    render(<Message message={message} />);
+
+    const panel = screen.getByRole('region', { name: 'Research progress' });
+    expect(within(panel).getAllByText('Searching regulator and industry sources')).toHaveLength(2);
+    expect(within(panel).getByText('nuprc.gov.ng')).toBeInTheDocument();
+    expect(screen.queryByText(/"step_id"/)).not.toBeInTheDocument();
+
+    const toggle = within(panel).getByRole('button');
+    await user.click(toggle);
+    expect(within(panel).queryByRole('list', { name: 'Working steps' })).not.toBeInTheDocument();
+    await user.click(toggle);
+    expect(within(panel).getByRole('list', { name: 'Working steps' })).toBeInTheDocument();
   });
 
   it('does not render an empty assistant bubble when a tool-backed turn finishes blank', () => {

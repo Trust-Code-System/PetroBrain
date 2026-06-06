@@ -50,6 +50,24 @@ export interface MessageFeedback {
   sentAt: number;
 }
 
+export type WorkingStepStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+export interface WorkingStep {
+  id: string;
+  label: string;
+  status: WorkingStepStatus;
+  detail?: string;
+  timestamp?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ProgressSource {
+  title: string;
+  url?: string | null;
+  domain?: string | null;
+  reliability?: string | null;
+}
+
 export interface AssistantMessage {
   id: string;
   role: 'assistant';
@@ -58,6 +76,8 @@ export interface AssistantMessage {
   toolResults: ToolResult[];
   evidencePack: EvidencePack | null;
   flags: string[];
+  workingSteps: WorkingStep[];
+  progressSources: ProgressSource[];
   streaming: boolean;
   error?: string;
   createdAt: number;

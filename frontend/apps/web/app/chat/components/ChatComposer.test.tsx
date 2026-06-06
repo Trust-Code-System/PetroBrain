@@ -56,4 +56,16 @@ describe('ChatComposer voice input', () => {
     });
     expect(screen.queryByText(/SpeechRecognition|webkitSpeechRecognition|web speech/i)).not.toBeInTheDocument();
   });
+
+  it('keeps the stop control usable while an assistant response is streaming', async () => {
+    const user = userEvent.setup();
+    const onStop = vi.fn();
+
+    render(<ChatComposer onSubmit={vi.fn()} sending onStop={onStop} />);
+
+    const stopButton = screen.getByRole('button', { name: 'Stop generating' });
+    expect(stopButton).toBeEnabled();
+    await user.click(stopButton);
+    expect(onStop).toHaveBeenCalledTimes(1);
+  });
 });

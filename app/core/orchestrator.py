@@ -31,6 +31,7 @@ from app.core.evidence import build_evidence_pack
 from app.core.guardrails import post_check, pre_check
 from app.core.llm_service import LLMConfigurationError, LLMResponse, LLMService
 from app.core.prompts import build_system_prompt
+from app.core.progress import ProgressEmitter
 from app.core.web_search import WEB_SEARCH_TOOL, run_web_search_tool
 from app.modules.emissions_mrv.agent import (
     BUILD_GHGEMP_REPORT_TOOL,
@@ -638,8 +639,24 @@ class Orchestrator:
         attachments: list[Any] | None = None, thinking_mode: str = "default",
         disable_web_search: bool = False,
     ) -> AsyncIterator[dict[str, Any]]:
+        progress = ProgressEmitter(module)
         flags: list[str] = []
+        yield progress.status("understand", "Understanding your question...")
+        yield progress.event(
+            "safety_check_started",
+            "preflight_safety",
+            "Verifying safety and compliance constraints...",
+        )
         pre = pre_check(user_text)
+        yield progress.status(
+            "understand", "Question understood.", "completed"
+        )
+        yield progress.event(
+            "safety_check_completed",
+            "preflight_safety",
+            "Safety and compliance pre-check completed.",
+            "completed",
+        )
         prefix = ""
         if not pre.allow:
             flags = pre.flags or []
@@ -648,6 +665,10 @@ class Orchestrator:
             answer = pre.override_response or ""
             if answer:
                 yield {"event": "token", "data": {"text": answer}}
+            yield progress.event(
+                "final", "finalize", "Safety response prepared.", "completed",
+                answer=answer,
+            )
             yield {"event": "done", "data": {
                 "answer": answer,
                 "tool_results": [],
@@ -684,10 +705,23 @@ class Orchestrator:
             asset_context_resolved.path_string if asset_context_resolved else asset_context
         )
 
+        plan_message = (
+            "Creating research plan..."
+            if module == "research"
+            else "Planning response steps..."
+        )
+        plan_event = "research_plan" if module == "research" else "status"
+        yield progress.event(plan_event, "plan", plan_message)
+
         retrieved_text, retrieved_clauses, retrieved_citations = "", [], []
         retrieved_internal_chunks: list[dict[str, Any]] = []
         retrieved_chunk_ids: list[int] = []
         if self.retriever is not None:
+            yield progress.event(
+                "retrieval_started",
+                "internal_retrieval",
+                "Checking internal documents...",
+            )
             hits = await self.retriever.retrieve(
                 user_text,
                 tenant_id=tenant_id,
@@ -707,6 +741,14 @@ class Orchestrator:
                     "clause": hit.get("clause"),
                 }
                 retrieved_citations.append(citation)
+            yield progress.event(
+                "retrieval_completed",
+                "internal_retrieval",
+                f"Reviewed {len(hits)} relevant internal document"
+                f"{'' if len(hits) == 1 else 's'}.",
+                "completed",
+                metadata={"source_count": len(hits)},
+            )
 
         has_attachments = bool(attachments)
         system = build_system_prompt(
@@ -732,6 +774,15 @@ class Orchestrator:
                     tools=tools,
                     thinking_mode=thinking_mode,
                 )
+                yield progress.event(
+                    plan_event,
+                    "plan",
+                    "Research plan created."
+                    if module == "research"
+                    else "Response plan created.",
+                    "completed",
+                    metadata={"tool_steps": len(resp.tool_calls or [])},
+                )
                 model = resp.model
                 usage = dict(resp.usage or {})
                 answer_text = resp.text or ""
@@ -741,6 +792,22 @@ class Orchestrator:
                         for call in resp.tool_calls
                     )
                     for call in resp.tool_calls:
+                        tool_name = str(call.get("name") or "tool")
+                        tool_step = f"tool_{tool_name}"
+                        tool_message = _tool_progress_message(tool_name, module)
+                        if tool_name == "web_search":
+                            yield progress.event(
+                                "source_search_started",
+                                "source_search",
+                                tool_message,
+                                metadata={"source_scope": _source_scope(module)},
+                            )
+                        yield progress.event(
+                            "tool_call_started",
+                            tool_step,
+                            tool_message,
+                            metadata={"tool": tool_name},
+                        )
                         result_event = self._execute_tool_call(
                             call, flags=flags, tenant_id=tenant_id, module=module,
                             retrieved_clauses=retrieved_clauses,
@@ -757,6 +824,12 @@ class Orchestrator:
                             )
                             for flag in turn_data["flags"]:
                                 yield {"event": "flag", "data": {"flag": flag}}
+                            yield progress.event(
+                                "error",
+                                tool_step,
+                                "A required deterministic check failed.",
+                                "failed",
+                            )
                             yield {"event": "done", "data": turn_data}
                             return
                         tool_input = result_event["input"]
@@ -775,8 +848,40 @@ class Orchestrator:
                             "input": tool_input,
                             "result": result,
                         })
+                        if tool_name == "web_search":
+                            rows = result.get("results") if isinstance(result, dict) else []
+                            for row in rows if isinstance(rows, list) else []:
+                                if not isinstance(row, dict):
+                                    continue
+                                yield progress.event(
+                                    "source_found",
+                                    "source_search",
+                                    f"Found source: {row.get('title') or 'Approved source'}",
+                                    source={
+                                        "title": row.get("title") or "Approved source",
+                                        "url": row.get("url"),
+                                    },
+                                )
+                            yield progress.status(
+                                "source_search",
+                                f"Reviewed {len(rows) if isinstance(rows, list) else 0} source"
+                                f"{'' if isinstance(rows, list) and len(rows) == 1 else 's'}.",
+                                "completed",
+                            )
+                        yield progress.event(
+                            "tool_call_completed",
+                            tool_step,
+                            _tool_completed_message(tool_name),
+                            "completed",
+                            metadata={"tool": tool_name},
+                        )
                     web_results, web_attempted, web_disabled = web_results_from_tools(
                         tool_results
+                    )
+                    yield progress.event(
+                        "evidence_pack_started",
+                        "evidence",
+                        "Building evidence pack...",
                     )
                     prepared = self.synthesis.prepare(
                         AnswerSynthesisRequest(
@@ -797,7 +902,37 @@ class Orchestrator:
                             web_search_disabled=web_disabled,
                         )
                     )
+                    filtered_count = int(
+                        prepared.audit_metadata.get(
+                            "filtered_irrelevant_source_count", 0
+                        )
+                    )
+                    if filtered_count:
+                        yield progress.event(
+                            "source_filtered",
+                            "source_filter",
+                            f"Removed {filtered_count} weak or irrelevant source"
+                            f"{'' if filtered_count == 1 else 's'}.",
+                            "completed",
+                            metadata={"filtered_count": filtered_count},
+                        )
+                    yield progress.event(
+                        "evidence_pack_completed",
+                        "evidence",
+                        "Evidence pack built.",
+                        "completed",
+                        metadata={"source_count": len(prepared.sources)},
+                        confidence={
+                            "label": prepared.confidence_label,
+                            "reason": prepared.confidence_reason,
+                        },
+                    )
                     if prepared.sources or calculation_results_from_tools(tool_results):
+                        yield progress.event(
+                            "synthesis_started",
+                            "synthesis",
+                            _synthesis_message(module),
+                        )
                         # Buffer the prose-only synthesis so citation markers
                         # can be validated before answer text reaches the UI.
                         final: dict[str, Any] = {
@@ -815,11 +950,26 @@ class Orchestrator:
                             thinking_mode=thinking_mode,
                         ):
                             pass
+                        yield progress.event(
+                            "citation_check_started",
+                            "citations",
+                            "Validating citations...",
+                        )
                         synthesis_result = self.synthesis.finalize(
                             prepared,
                             text=final["text"],
                             model=final["model"],
                             usage=final["usage"],
+                        )
+                        yield progress.event(
+                            "citation_check_completed",
+                            "citations",
+                            f"Validated {len(synthesis_result.citations)} citation"
+                            f"{'' if len(synthesis_result.citations) == 1 else 's'}.",
+                            "completed",
+                            metadata={
+                                "citation_count": len(synthesis_result.citations)
+                            },
                         )
                     else:
                         synthesis_result = self.synthesis.finalize(
@@ -842,6 +992,17 @@ class Orchestrator:
                         yield {"event": "citation", "data": citation}
                     yield {"event": "token", "data": {"text": answer_text}}
             else:
+                yield progress.event(
+                    plan_event,
+                    "plan",
+                    "Response plan created.",
+                    "completed",
+                )
+                yield progress.event(
+                    "synthesis_started",
+                    "synthesis",
+                    _synthesis_message(module),
+                )
                 final = {"text": "", "tool_calls": [], "usage": {}, "model": ""}
                 async for event in self._stream_llm_to_events(
                     system, messages, None, final, emit=True,
@@ -876,6 +1037,11 @@ class Orchestrator:
             return
 
         answer = prefix + _safe_answer_text(answer_text, tool_results)
+        yield progress.event(
+            "safety_check_started",
+            "final_safety",
+            "Checking final safety and compliance constraints...",
+        )
         safety_critical = any(
             tr["result"].get("safety_critical") or "banner" in tr["result"]
             for tr in tool_results
@@ -887,6 +1053,12 @@ class Orchestrator:
             flags += post.flags
             for flag in post.flags:
                 yield {"event": "flag", "data": {"flag": flag}}
+        yield progress.event(
+            "safety_check_completed",
+            "final_safety",
+            "Final safety and compliance check completed.",
+            "completed",
+        )
 
         audit = {
             "tenant_id": tenant_id, "module": module, "model": model,
@@ -910,6 +1082,14 @@ class Orchestrator:
         )
         if synthesis_result is not None:
             audit.update(synthesis_result.audit_metadata)
+        yield progress.status("finalize", "Finalizing response...")
+        yield progress.event(
+            "final",
+            "finalize",
+            "Final response prepared.",
+            "completed",
+            answer=answer,
+        )
         yield {"event": "done", "data": {
             "answer": answer,
             "tool_results": tool_results,
@@ -1017,6 +1197,61 @@ def _safe_answer_text(text: str | None, tool_results: list[dict[str, Any]]) -> s
             "Please retry the request."
         )
     return ""
+
+
+def _source_scope(module: str) -> str:
+    return "research" if module == "research" else "approved_oil_and_gas"
+
+
+def _tool_progress_message(tool_name: str, module: str) -> str:
+    if tool_name == "web_search":
+        return (
+            "Searching regulator, company, and industry sources..."
+            if module == "research"
+            else "Searching approved oil and gas sources..."
+        )
+    if tool_name == "build_kill_sheet":
+        return "Running deterministic kill sheet calculations..."
+    if tool_name == "build_ptw_template":
+        return "Building hazards, controls, and sign-off blocks..."
+    if tool_name in {
+        "flaring_emissions",
+        "venting_emissions",
+        "fugitive_tier2",
+        "fugitive_tier3",
+        "combustion_emissions",
+        "reconcile_flaring",
+    }:
+        return "Running deterministic emissions calculation..."
+    if tool_name in {"build_report", "build_ghgemp_report"}:
+        return "Preparing emissions inventory summary..."
+    if tool_name == "model_abatement":
+        return "Evaluating emissions abatement options..."
+    return "Running a deterministic check..."
+
+
+def _tool_completed_message(tool_name: str) -> str:
+    if tool_name == "web_search":
+        return "Approved source search completed."
+    if tool_name == "build_kill_sheet":
+        return "Deterministic kill sheet calculation completed."
+    if tool_name == "build_ptw_template":
+        return "Permit hazards, controls, and sign-off blocks prepared."
+    if "emissions" in tool_name or tool_name in {
+        "reconcile_flaring",
+        "combustion_emissions",
+    }:
+        return "Deterministic emissions calculation completed."
+    return "Deterministic check completed."
+
+
+def _synthesis_message(module: str) -> str:
+    return {
+        "research": "Synthesizing final research report...",
+        "emissions_mrv": "Preparing emissions result...",
+        "well_control": "Preparing verification output...",
+        "ptw": "Preparing final permit draft...",
+    }.get(module, "Drafting final answer...")
 
 
 def _answer_chunks(text: str, limit: int = 180) -> list[str]:

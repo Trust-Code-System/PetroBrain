@@ -67,6 +67,22 @@ describe('consumeSse', () => {
     ]);
   });
 
+  it('parses typed progress events without exposing the payload as text', async () => {
+    const stream = makeStream([
+      'event: status\ndata: {"type":"status","step_id":"plan","status":"running","message":"Planning research steps...","timestamp":"2026-06-06T10:00:00Z"}\n\n',
+      'event: source_found\ndata: {"type":"source_found","step_id":"source_search","status":"running","message":"Found NUPRC source","timestamp":"2026-06-06T10:00:01Z","source":{"title":"NUPRC","url":"https://nuprc.gov.ng"}}\n\n',
+    ]);
+    const out: StreamEvent[] = [];
+
+    await consumeSse(stream, (event) => out.push(event));
+
+    expect(out.map((event) => event.event)).toEqual(['status', 'source_found']);
+    expect(out[1]?.data).toMatchObject({
+      step_id: 'source_search',
+      source: { title: 'NUPRC' },
+    });
+  });
+
   it('ignores malformed records without throwing', async () => {
     const stream = makeStream(['event: token\ndata: not-json\n\n', 'event: token\ndata: {"text":"ok"}\n\n']);
     const out: StreamEvent[] = [];

@@ -19,6 +19,7 @@ import { isCanvasWorthy } from '@/lib/chat/canvas';
 import { useProjectsStore } from '@/lib/chat/projects';
 import { useSettingsStore } from '@/lib/chat/settings';
 import { SessionExpiredError, streamChat, type StreamEvent } from '@/lib/chat/streamChat';
+import { initialWorkingSteps } from '@/lib/chat/progress';
 import { submitFeedback } from '@/lib/chat/feedback';
 import { routeModule } from '@/lib/chat/moduleRouting';
 import { createTokenStreamer } from '@/lib/chat/tokenStreamer';
@@ -331,6 +332,8 @@ export function ChatClient() {
           toolResults: [],
           evidencePack: null,
           flags: [],
+          workingSteps: [],
+          progressSources: [],
           streaming: false,
           createdAt: Date.now(),
         };
@@ -382,6 +385,8 @@ export function ChatClient() {
         toolResults: [],
         evidencePack: null,
         flags: [],
+        workingSteps: initialWorkingSteps(effectiveModule),
+        progressSources: [],
         streaming: true,
         createdAt: Date.now(),
       };
@@ -1223,6 +1228,25 @@ export function applyEvent(
         return m.flags.includes(event.data.flag)
           ? m
           : { ...m, flags: [...m.flags, event.data.flag] };
+      case 'status':
+      case 'research_plan':
+      case 'source_search_started':
+      case 'source_found':
+      case 'source_filtered':
+      case 'retrieval_started':
+      case 'retrieval_completed':
+      case 'tool_call_started':
+      case 'tool_call_completed':
+      case 'citation_check_started':
+      case 'citation_check_completed':
+      case 'safety_check_started':
+      case 'safety_check_completed':
+      case 'evidence_pack_started':
+      case 'evidence_pack_completed':
+      case 'synthesis_started':
+      case 'final':
+      case 'error':
+        return applyProgressEvent(m, event);
       case 'done': {
         // Only spread turnId when we actually got one - strict optional-
         // property typing rejects an explicit `undefined` assignment.
@@ -1234,6 +1258,7 @@ export function applyEvent(
           toolResults: (event.data.tool_results as ToolResult[]) ?? m.toolResults,
           evidencePack: event.data.evidence_pack ?? m.evidencePack,
           flags: event.data.flags ?? m.flags,
+          workingSteps: completeRunningSteps(m.workingSteps ?? [], event.data.status === 'failed'),
           streaming: false as const,
         };
         return resolvedTurnId ? { ...base, turnId: resolvedTurnId } : base;
@@ -1242,6 +1267,102 @@ export function applyEvent(
         return m;
     }
   });
+}
+
+function applyProgressEvent(
+  message: AssistantMessage,
+  event: Extract<StreamEvent, { event:
+    | 'status'
+    | 'research_plan'
+    | 'source_search_started'
+    | 'source_found'
+    | 'source_filtered'
+    | 'retrieval_started'
+    | 'retrieval_completed'
+    | 'tool_call_started'
+    | 'tool_call_completed'
+    | 'citation_check_started'
+    | 'citation_check_completed'
+    | 'safety_check_started'
+    | 'safety_check_completed'
+    | 'evidence_pack_started'
+    | 'evidence_pack_completed'
+    | 'synthesis_started'
+    | 'final'
+    | 'error'
+  }>,
+): AssistantMessage {
+  const data = event.data;
+  const status = data.status ?? (event.event === 'error' ? 'failed' : 'running');
+  const current = message.workingSteps ?? [];
+  if (event.event === 'source_found') {
+    return {
+      ...message,
+      progressSources: appendProgressSource(message.progressSources ?? [], data.source),
+    };
+  }
+  const index = current.findIndex((step) => step.id === data.step_id);
+  const nextStep = {
+    id: data.step_id,
+    label: cleanProgressLabel(data.message),
+    status,
+    detail: data.message,
+    timestamp: data.timestamp,
+    ...(data.metadata ? { metadata: data.metadata } : {}),
+  };
+  const workingSteps = current.slice();
+  if (index >= 0) {
+    workingSteps[index] = { ...workingSteps[index]!, ...nextStep };
+  } else {
+    workingSteps.push(nextStep);
+  }
+
+  return { ...message, workingSteps };
+}
+
+function completeRunningSteps(steps: AssistantMessage['workingSteps'], failed: boolean) {
+  return steps
+    .filter((step) => step.status !== 'pending')
+    .map((step) =>
+      step.status === 'running'
+        ? { ...step, status: failed ? 'failed' as const : 'completed' as const }
+        : step,
+    );
+}
+
+function cleanProgressLabel(message: string): string {
+  return message.trim().replace(/\.{3}$/, '').replace(/\.$/, '');
+}
+
+function domainFromUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}
+
+function appendProgressSource(
+  sources: AssistantMessage['progressSources'],
+  data: {
+    title?: string | null;
+    url?: string | null;
+    domain?: string | null;
+    reliability?: string | null;
+  } | undefined,
+): AssistantMessage['progressSources'] {
+  if (!data?.title) return sources;
+  const source = {
+    title: data.title,
+    ...(data.url !== undefined ? { url: data.url } : {}),
+    domain: data.domain ?? domainFromUrl(data.url),
+    ...(data.reliability !== undefined ? { reliability: data.reliability } : {}),
+  };
+  if (sources.some((item) => item.url === source.url && item.title === source.title)) {
+    return sources;
+  }
+  return [...sources, source];
 }
 
 function mergeToolResult(

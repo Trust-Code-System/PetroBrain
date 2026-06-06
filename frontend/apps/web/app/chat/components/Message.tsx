@@ -16,6 +16,7 @@ import { isCanvasWorthy } from '@/lib/chat/canvas';
 import { Markdown } from './Markdown';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { EvidencePanel } from './EvidencePanel';
+import { ResearchProgressPanel } from './ResearchProgressPanel';
 import { userSafeToolLabel, WorkingPanel } from './WorkingPanel';
 
 const FLAG_BANNERS: Record<string, { tone: 'danger' | 'warn' | 'info'; title: string }> = {
@@ -128,10 +129,12 @@ function AssistantMessageView({
 
   const hasText = message.text.length > 0;
   const hasWork = message.toolResults.length > 0 || message.citations.length > 0;
+  const workingSteps = message.workingSteps ?? [];
+  const progressSources = message.progressSources ?? [];
   // Hide the "Thinking" pulse as soon as any signal arrives - a tool call
   // running, a citation streaming in, or the first token - so it never
   // lingers next to a panel that already shows progress.
-  const isThinking = message.streaming && !hasText && !hasWork;
+  const isThinking = message.streaming && !hasText && !hasWork && workingSteps.length === 0;
   const isFinal = !message.streaming && !message.error;
 
   return (
@@ -160,6 +163,14 @@ function AssistantMessageView({
         ))}
 
         {isThinking ? <ThinkingIndicator /> : null}
+
+        {workingSteps.length > 0 ? (
+          <ResearchProgressPanel
+            steps={workingSteps}
+            sources={progressSources}
+            streaming={message.streaming}
+          />
+        ) : null}
 
         {hasText ? (
           <div className="prose-pb">

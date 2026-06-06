@@ -20,8 +20,47 @@ export interface StreamChatRequest {
   disable_web_search?: boolean;
 }
 
+export type StreamStepStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+export interface StreamProgressData {
+  type: string;
+  message: string;
+  step_id: string;
+  status: StreamStepStatus;
+  timestamp: string;
+  metadata?: Record<string, unknown>;
+  source?: {
+    title?: string | null;
+    url?: string | null;
+    domain?: string | null;
+    reliability?: string | null;
+  };
+  confidence?: Record<string, unknown>;
+}
+
+export type ProgressEventName =
+  | 'status'
+  | 'research_plan'
+  | 'source_search_started'
+  | 'source_found'
+  | 'source_filtered'
+  | 'retrieval_started'
+  | 'retrieval_completed'
+  | 'tool_call_started'
+  | 'tool_call_completed'
+  | 'citation_check_started'
+  | 'citation_check_completed'
+  | 'safety_check_started'
+  | 'safety_check_completed'
+  | 'evidence_pack_started'
+  | 'evidence_pack_completed'
+  | 'synthesis_started'
+  | 'final'
+  | 'error';
+
 export type StreamEvent =
-  | { event: 'token'; data: { text: string } }
+  | { event: ProgressEventName; data: StreamProgressData & Record<string, unknown> }
+  | { event: 'token'; data: Partial<StreamProgressData> & { text: string; content?: string } }
   | { event: 'tool_call'; data: { tool: string; id?: string; input: unknown } }
   | { event: 'tool_result'; data: { tool: string; result: Record<string, unknown> } }
   | {
@@ -47,6 +86,11 @@ export type StreamEvent =
         evidence_pack?: EvidencePack;
         /** Server-minted id for this turn; key for POST /chat/feedback. */
         turn_id?: string;
+        type?: 'done';
+        message?: string;
+        step_id?: string;
+        status?: StreamStepStatus;
+        timestamp?: string;
       };
     };
 

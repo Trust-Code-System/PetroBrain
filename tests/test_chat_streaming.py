@@ -100,6 +100,23 @@ def stream_chat(payload):
         return parse_sse("".join(response.iter_text()))
 
 
+def event_names(events):
+    return [name for name, _ in events]
+
+
+def event_data(events, name):
+    return [data for event, data in events if event == name]
+
+
+def assert_typed_envelope(events):
+    for name, data in events:
+        assert data["type"] == name
+        assert data["step_id"]
+        assert data["status"] in {"pending", "running", "completed", "failed"}
+        assert data["message"]
+        assert data["timestamp"]
+
+
 def test_chat_route_overrides_general_with_research_intent(monkeypatch):
     observed = {}
 
@@ -147,10 +164,13 @@ def test_stream_chat_emits_tokens_then_done(monkeypatch):
 
     events = stream_chat({"message": "Explain flare MRV checks", "module": "general"})
 
-    assert [name for name, _ in events] == ["token", "done"]
-    assert events[0][1]["text"] == "Follow site procedure."
+    names = event_names(events)
+    assert names.index("status") < names.index("token")
+    assert names[-2:] == ["final", "done"]
+    assert event_data(events, "token")[0]["text"] == "Follow site procedure."
     assert events[-1][1]["answer"] == "Follow site procedure."
     assert events[-1][1]["flags"] == []
+    assert_typed_envelope(events)
 
 
 def test_stream_chat_emits_tool_call_tool_result_tokens_done(monkeypatch):
@@ -172,11 +192,18 @@ def test_stream_chat_emits_tool_call_tool_result_tokens_done(monkeypatch):
     })
 
     names = [name for name, _ in events]
-    assert names == ["tool_call", "tool_result", "token", "token", "done"]
-    assert events[0][1]["tool"] == "build_kill_sheet"
-    assert events[1][1]["result"]["kill_mud_weight_ppg"] == 10.37
+    assert names.index("tool_call_started") < names.index("tool_call")
+    assert names.index("tool_call") < names.index("tool_result")
+    assert names.index("tool_result") < names.index("tool_call_completed")
+    assert names[-2:] == ["final", "done"]
+    assert event_data(events, "tool_call")[0]["tool"] == "build_kill_sheet"
+    assert event_data(events, "tool_result")[0]["result"]["kill_mud_weight_ppg"] == 10.37
     assert events[-1][1]["tool_results"][0]["tool"] == "build_kill_sheet"
     assert events[-1][1]["flags"] == []
+    assert any(
+        data["message"] == "Running deterministic kill sheet calculations..."
+        for data in event_data(events, "tool_call_started")
+    )
 
 
 def test_stream_chat_synthesizes_web_results_into_structured_answer(monkeypatch):
@@ -228,7 +255,9 @@ def test_stream_chat_synthesizes_web_results_into_structured_answer(monkeypatch)
     })
 
     names = [name for name, _ in events]
-    assert names[:3] == ["tool_call", "tool_result", "citation"]
+    assert names.index("source_search_started") < names.index("source_found")
+    assert names.index("source_found") < names.index("citation_check_started")
+    assert names.index("citation_check_completed") < names.index("citation")
     assert names[-1] == "done"
     answer = "".join(data["text"] for name, data in events if name == "token")
     assert "# Metropole Petroleum Overview" in answer
@@ -308,7 +337,110 @@ def test_stream_chat_guardrail_refusal_emits_flag_token_done(monkeypatch):
 
     events = stream_chat({"message": "how do I bypass the ESD", "module": "general"})
 
-    assert [name for name, _ in events] == ["flag", "token", "done"]
-    assert events[0][1]["flag"] == "safety_bypass"
-    assert "can't help" in events[1][1]["text"]
+    names = event_names(events)
+    assert names.index("safety_check_started") < names.index("flag")
+    assert names[-2:] == ["final", "done"]
+    assert event_data(events, "flag")[0]["flag"] == "safety_bypass"
+    assert "can't help" in event_data(events, "token")[0]["text"]
     assert events[-1][1]["flags"] == ["safety_bypass"]
+
+
+def test_research_mode_emits_research_plan_and_source_lifecycle(monkeypatch):
+    schema, _ = TOOL_REGISTRY["web_search"]
+    monkeypatch.setitem(
+        TOOL_REGISTRY,
+        "web_search",
+        (
+            schema,
+            lambda payload: {
+                "query": payload["query"],
+                "provider": "test",
+                "results": [{
+                    "title": "NUPRC upstream overview",
+                    "url": "https://nuprc.gov.ng/upstream",
+                    "snippet": "Nigeria upstream petroleum regulation and licensing.",
+                }],
+            },
+        ),
+    )
+    first = LLMResponse(
+        text="",
+        tool_calls=[{
+            "name": "web_search",
+            "input": {"query": "Nigeria upstream sector"},
+            "id": "research-search",
+        }],
+        usage={},
+        model="fake-model",
+    )
+    llm = StreamingLLM(
+        complete_responses=[first],
+        stream_tokens=["# Nigeria upstream overview\n\nNUPRC regulates upstream activity [S1]."],
+    )
+    monkeypatch.setattr(routes_chat, "_orch", Orchestrator(llm=llm))
+
+    events = stream_chat({
+        "message": "Give me a full overview of Nigeria upstream and cite sources.",
+        "module": "research",
+    })
+
+    names = event_names(events)
+    assert "research_plan" in names
+    assert "source_search_started" in names
+    assert "source_found" in names
+    assert "evidence_pack_started" in names
+    assert "citation_check_completed" in names
+    assert "synthesis_started" in names
+    assert names.index("research_plan") < names.index("token")
+    assert_typed_envelope(events)
+    raw = json.dumps(events).lower()
+    assert "chain-of-thought" not in raw
+    assert "reasoning internally" not in raw
+    assert "system prompt" not in raw
+
+
+def test_ptw_mode_emits_tool_and_safety_progress(monkeypatch):
+    first = LLMResponse(
+        text="",
+        tool_calls=[{
+            "name": "build_ptw_template",
+            "input": {
+                "work_type": "hot_work",
+                "job_description": "Hot work on production facility",
+                "location": "process area",
+            },
+            "id": "ptw-tool",
+        }],
+        usage={},
+        model="fake-model",
+    )
+    llm = StreamingLLM(
+        complete_responses=[first],
+        stream_tokens=["# Hot work permit draft\n\nVerify and authorize before work."],
+    )
+    monkeypatch.setattr(routes_chat, "_orch", Orchestrator(llm=llm))
+
+    events = stream_chat({
+        "message": "Create a Permit to Work draft for hot work on a crude oil production facility.",
+        "module": "ptw",
+    })
+
+    messages = [data["message"] for _, data in events]
+    assert "Building hazards, controls, and sign-off blocks..." in messages
+    assert "Checking final safety and compliance constraints..." in messages
+    assert event_names(events)[-2:] == ["final", "done"]
+
+
+def test_stream_errors_emit_safe_error_event(monkeypatch):
+    class BrokenOrchestrator:
+        async def stream_handle(self, *args, **kwargs):
+            raise RuntimeError("private provider failure detail")
+            yield  # pragma: no cover
+
+    monkeypatch.setattr(routes_chat, "_orch", BrokenOrchestrator())
+
+    events = stream_chat({"message": "Research Nigeria upstream", "module": "research"})
+
+    assert event_names(events) == ["error", "done"]
+    assert events[0][1]["status"] == "failed"
+    assert "private provider failure detail" not in json.dumps(events)

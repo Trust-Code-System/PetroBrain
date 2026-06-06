@@ -13,6 +13,7 @@ from app.core.audit import AuditEvent, get_audit_logger
 from app.core.audit_hash import sha256_canonical
 from app.core.observability import increment_token_cost_counters, record_chat_turn
 from app.core.orchestrator import Orchestrator, Turn
+from app.core.progress import normalize_stream_data
 from app.core.module_routing import route_module
 from app.core import turn_attribution
 from app.core.chunk_weight_updater import update_weights_from_feedback
@@ -73,20 +74,44 @@ async def chat(
 async def _stream_chat(req: ChatRequest, who: Principal, turn_id: str):
     started = perf_counter()
     final_data = None
-    async for item in _orch.stream_handle(
-        req.message, module=req.module, tenant_id=who.tenant_id,
-        user_role=req.user_role or who.role, jurisdiction=req.jurisdiction,
-        asset_context=req.asset_context, offline_mode=req.offline_mode,
-        attachments=req.attachments, thinking_mode=req.thinking_mode,
-        disable_web_search=req.disable_web_search,
-    ):
-        event = item["event"]
-        data = item["data"]
-        if event == "done":
-            # Inject turn_id so the frontend can wire the feedback chips.
-            data = {**data, "turn_id": turn_id}
-            final_data = data
-        yield _sse(event, data)
+    try:
+        async for item in _orch.stream_handle(
+            req.message, module=req.module, tenant_id=who.tenant_id,
+            user_role=req.user_role or who.role, jurisdiction=req.jurisdiction,
+            asset_context=req.asset_context, offline_mode=req.offline_mode,
+            attachments=req.attachments, thinking_mode=req.thinking_mode,
+            disable_web_search=req.disable_web_search,
+        ):
+            event = item["event"]
+            data = normalize_stream_data(event, item["data"])
+            if event == "done":
+                # Inject turn_id so the frontend can wire the feedback chips.
+                data = {**data, "turn_id": turn_id}
+                final_data = data
+            yield _sse(event, data)
+    except Exception:  # noqa: BLE001 - stream a safe terminal event
+        logger.exception(
+            "chat_stream_failed",
+            tenant_id=who.tenant_id,
+            module=req.module,
+            turn_id=turn_id,
+        )
+        error_data = normalize_stream_data("error", {
+            "message": "PetroBrain could not complete this response. Please retry.",
+            "status": "failed",
+        })
+        yield _sse("error", error_data)
+        yield _sse("done", normalize_stream_data("done", {
+            "answer": "",
+            "tool_results": [],
+            "flags": ["stream_error"],
+            "audit": {"stopped_at": "stream_error", "module": req.module},
+            "evidence_pack": {},
+            "turn_id": turn_id,
+            "status": "failed",
+            "message": "Response stopped because of an error.",
+        }))
+        return
     if final_data is not None:
         turn = Turn(
             answer=final_data.get("answer", ""),
