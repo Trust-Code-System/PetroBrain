@@ -103,8 +103,13 @@ services:
         value: petrobrain
       - key: PB_JWT_AUDIENCE
         value: petrobrain-api
+      # Demo instance only: open self-serve signup so the signup + onboarding
+      # flow runs end to end. All signups share the PB_DEFAULT_SIGNUP_TENANT_ID
+      # ("demo") tenant - fine for demos, NOT isolated per customer. Keep this
+      # "false" on any instance pointed at real customers (and prod boot will
+      # reject "true" anyway - see app/config.py validate_production_settings).
       - key: PB_ENABLE_SELF_SIGNUP
-        value: "false"
+        value: "true"
 
       # --- Neon Auth (SSO): verify the EdDSA JWT the web app forwards as a
       #     Bearer against Neon's JWKS, then map the token's `sub` to an active

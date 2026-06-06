@@ -22,6 +22,7 @@ module.exports = {
           700: '#c2410c',
           800: '#9a3412',
           900: '#7c2d12',
+          950: '#431407',
         },
         safe: { fg: '#0e5132', bg: '#dff3e4', border: '#1f8a4c' },
         info: { fg: '#0a3d6b', bg: '#dfeefd', border: '#1f6fb8' },
