@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { BackLink, Banner, Logo } from '@petrobrain/ui';
+import { BackLink, Banner, Logo, Select } from '@petrobrain/ui';
 import type { AssetNode } from '@petrobrain/types';
 
 import { AuthGate } from '../chat/components/AuthGate';
@@ -31,6 +31,8 @@ import type {
   ResearchRun,
   ResearchSource,
 } from '@/lib/research/types';
+
+import { ThemedDatePicker } from './ThemedDatePicker';
 
 const ALLOWED_ROLES = new Set(['platform_admin', 'admin', 'engineer', 'hse']);
 
@@ -303,12 +305,12 @@ export function ResearchClient() {
   }
 
   return (
-    <main className="min-h-screen bg-neutral-50/70 dark:bg-neutral-950">
-      <header className="border-b border-neutral-200/80 bg-white/90 px-5 py-3 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/90">
+    <main className="min-h-screen bg-neutral-50/70 dark:bg-neutral-950 xl:flex xl:h-screen xl:min-h-0 xl:flex-col xl:overflow-hidden">
+      <header className="shrink-0 border-b border-neutral-200/80 bg-white/90 px-5 py-3 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/90">
         <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Link href="/" legacyBehavior passHref>
-              <BackLink label="Back to home" />
+            <Link href="/chat" legacyBehavior passHref>
+              <BackLink label="Back to chat" />
             </Link>
             <span className="h-5 w-px bg-neutral-200 dark:bg-neutral-800" />
             <Logo size={28} />
@@ -325,8 +327,8 @@ export function ResearchClient() {
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-4 p-4 xl:grid-cols-[21rem_minmax(0,1fr)_24rem]">
-        <aside className="space-y-4">
+      <div className="mx-auto grid w-full max-w-[1600px] grid-cols-1 gap-4 p-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[21rem_minmax(0,1fr)_24rem] xl:overflow-hidden">
+        <aside className="space-y-4 xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:pr-1">
           <ResearchBrief
             draft={draft}
             setDraft={setDraft}
@@ -342,7 +344,7 @@ export function ResearchClient() {
           />
         </aside>
 
-        <section className="min-w-0 space-y-4">
+        <section className="min-w-0 space-y-4 xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:pr-1">
           <Banner tone="brand" title="DECISION SUPPORT ONLY">
             Research reports are evidence-led drafts. Verify safety, legal, regulatory,
             commercial, and investment conclusions with the responsible authority.
@@ -379,7 +381,7 @@ export function ResearchClient() {
           ) : null}
         </section>
 
-        <aside className="space-y-4">
+        <aside className="space-y-4 xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:pr-1">
           <SourcePanel sources={active?.sources ?? []} events={events} />
           {active?.evidence_pack ? (
             <Panel title="Evidence">
@@ -420,17 +422,14 @@ function ResearchBrief({
             className={inputClass}
           />
         </Field>
-        <Field label="Report type">
-          <select
-            value={draft.reportType}
-            onChange={(event) => setDraft((current) => ({ ...current, reportType: event.target.value }))}
-            className={inputClass}
-          >
-            {REPORT_TYPES.map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-        </Field>
+        <Select
+          label="Report type"
+          value={draft.reportType}
+          onChange={(event) =>
+            setDraft((current) => ({ ...current, reportType: event.target.value }))
+          }
+          options={REPORT_TYPES.map(([value, label]) => ({ value, label }))}
+        />
         <div className="grid grid-cols-2 gap-2">
           <Field label="Jurisdiction">
             <input
@@ -439,64 +438,60 @@ function ResearchBrief({
               className={inputClass}
             />
           </Field>
-          <Field label="Depth">
-            <select
-              value={draft.depth}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  depth: event.target.value as ResearchDepth,
-                }))
-              }
-              className={inputClass}
-            >
-              <option value="quick">Quick brief</option>
-              <option value="standard">Standard report</option>
-              <option value="deep">Deep research</option>
-            </select>
-          </Field>
+          <Select
+            label="Depth"
+            value={draft.depth}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                depth: event.target.value as ResearchDepth,
+              }))
+            }
+            options={[
+              { value: 'quick', label: 'Quick brief' },
+              { value: 'standard', label: 'Standard report' },
+              { value: 'deep', label: 'Deep research' },
+            ]}
+          />
         </div>
-        <Field label="Asset">
-          <select
-            value={draft.assetContext}
-            onChange={(event) => setDraft((current) => ({ ...current, assetContext: event.target.value }))}
-            className={inputClass}
-          >
-            <option value="">Tenant-wide</option>
-            {assets.map((asset) => (
-              <option key={asset.id} value={asset.id}>{asset.name}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Project">
-          <select
-            value={draft.projectId}
-            onChange={(event) => setDraft((current) => ({ ...current, projectId: event.target.value }))}
-            className={inputClass}
-          >
-            <option value="">No project</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>{project.name}</option>
-            ))}
-          </select>
-        </Field>
+        <Select
+          label="Asset"
+          value={draft.assetContext}
+          onChange={(event) =>
+            setDraft((current) => ({ ...current, assetContext: event.target.value }))
+          }
+          options={[
+            { value: '', label: 'Tenant-wide' },
+            ...assets.map((asset) => ({ value: asset.id, label: asset.name })),
+          ]}
+        />
+        <Select
+          label="Project"
+          value={draft.projectId}
+          onChange={(event) =>
+            setDraft((current) => ({ ...current, projectId: event.target.value }))
+          }
+          options={[
+            { value: '', label: 'No project' },
+            ...projects.map((project) => ({ value: project.id, label: project.name })),
+          ]}
+        />
         <div className="grid grid-cols-2 gap-2">
-          <Field label="From date">
-            <input
-              type="date"
-              value={draft.dateFrom}
-              onChange={(event) => setDraft((current) => ({ ...current, dateFrom: event.target.value }))}
-              className={inputClass}
-            />
-          </Field>
-          <Field label="To date">
-            <input
-              type="date"
-              value={draft.dateTo}
-              onChange={(event) => setDraft((current) => ({ ...current, dateTo: event.target.value }))}
-              className={inputClass}
-            />
-          </Field>
+          <ThemedDatePicker
+            label="From date"
+            value={draft.dateFrom}
+            onChange={(value) =>
+              setDraft((current) => ({ ...current, dateFrom: value }))
+            }
+          />
+          <ThemedDatePicker
+            label="To date"
+            value={draft.dateTo}
+            align="right"
+            onChange={(value) =>
+              setDraft((current) => ({ ...current, dateTo: value }))
+            }
+          />
         </div>
         <Field label="Approved domains">
           <input
