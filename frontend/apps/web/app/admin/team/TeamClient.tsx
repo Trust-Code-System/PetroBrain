@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import type { Role } from '@petrobrain/types';
-import { BackLink } from '@petrobrain/ui';
+import { BackLink, Input, Select } from '@petrobrain/ui';
 
 import { AuthGate } from '../../chat/components/AuthGate';
+import { Combobox } from '@/lib/ui/Combobox';
 import { useChatStore } from '@/lib/chat/store';
 import {
   createInvitation,
@@ -29,6 +30,26 @@ const ROLES: Array<{ value: Role; label: string; description: string }> = [
   { value: 'procurement_user', label: 'Procurement User', description: 'RFQ, vendor, and contract workflows.' },
   { value: 'viewer', label: 'Viewer', description: 'Read-only access.' },
   { value: 'auditor', label: 'Auditor', description: 'Audit and evidence access without settings changes.' },
+];
+
+const DEPARTMENTS = [
+  'Operations',
+  'Production',
+  'Drilling / Well Engineering',
+  'Engineering',
+  'HSE / Safety',
+  'Environment / Emissions',
+  'Regulatory / Compliance',
+  'Maintenance / Integrity',
+  'Facilities',
+  'Procurement / Supply Chain',
+  'Commercial / Trading',
+  'Finance',
+  'Legal',
+  'IT / Digital',
+  'Human Resources',
+  'Research & Development',
+  'Executive / Management',
 ];
 
 interface Member {
@@ -169,19 +190,30 @@ export function TeamClient() {
 
         <section className="mt-7 rounded-2xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
           <h2 className="text-lg font-semibold">Invite coworker</h2>
-          <form onSubmit={submitInvite} className="mt-4 grid gap-3 md:grid-cols-[1fr_220px_200px_auto]">
-            <label className="text-xs font-medium">Email
-              <input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1 h-10 w-full rounded-lg border px-3 dark:border-neutral-700 dark:bg-neutral-950" />
-            </label>
-            <label className="text-xs font-medium">Role
-              <select value={role} onChange={(event) => setRole(event.target.value as Role)} className="mt-1 h-10 w-full rounded-lg border px-2 dark:border-neutral-700 dark:bg-neutral-950">
-                {ROLES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-              </select>
-            </label>
-            <label className="text-xs font-medium">Department
-              <input value={department} onChange={(event) => setDepartment(event.target.value)} className="mt-1 h-10 w-full rounded-lg border px-3 dark:border-neutral-700 dark:bg-neutral-950" />
-            </label>
-            <button disabled={busy} className="self-end rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+          <form onSubmit={submitInvite} className="mt-4 grid items-start gap-3 md:grid-cols-[1fr_220px_220px_auto]">
+            <Input
+              label="Email"
+              type="email"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+            <Select
+              label="Role"
+              value={role}
+              onChange={(event) => setRole(event.target.value as Role)}
+              options={ROLES.map((item) => ({ value: item.value, label: item.label }))}
+            />
+            <Combobox
+              label="Department"
+              value={department}
+              options={DEPARTMENTS}
+              onChange={setDepartment}
+              allowOther
+              placeholder="Select or type"
+              otherPlaceholder="Enter a department"
+            />
+            <button disabled={busy} className="self-start rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50 md:mt-[26px]">
               Create invite
             </button>
           </form>
@@ -201,9 +233,13 @@ export function TeamClient() {
                       {member.role === 'tenant_owner' ? (
                         <span>Tenant Owner</span>
                       ) : (
-                        <select value={member.role} onChange={(event) => void changeMemberRole(member.id, event.target.value as Role)} className="rounded-lg border px-2 py-1.5 dark:border-neutral-700 dark:bg-neutral-950">
-                          {ROLES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-                        </select>
+                        <Select
+                          label=""
+                          className="w-52"
+                          value={member.role}
+                          onChange={(event) => void changeMemberRole(member.id, event.target.value as Role)}
+                          options={ROLES.map((item) => ({ value: item.value, label: item.label }))}
+                        />
                       )}
                     </td>
                     <td className="p-4 capitalize">{member.status}</td>

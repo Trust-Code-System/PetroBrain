@@ -21,7 +21,7 @@ interface ComboboxProps {
 }
 
 /**
- * Themed, brand-styled dropdown for the onboarding flow.
+ * Themed, brand-styled dropdown used across the app.
  *
  * Replaces the native <select> with a custom listbox so the picker matches
  * the PetroBrain color scheme, supports type-ahead search for long lists

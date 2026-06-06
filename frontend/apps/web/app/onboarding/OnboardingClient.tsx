@@ -8,7 +8,7 @@ import { Logo, Select } from '@petrobrain/ui';
 import type { Role } from '@petrobrain/types';
 
 import { AuthGate } from '../chat/components/AuthGate';
-import { Combobox } from '@/lib/onboarding/Combobox';
+import { Combobox } from '@/lib/ui/Combobox';
 import {
   COUNTRY_NAMES,
   JOB_TITLES,
