@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
-import type { Module, Principal } from '@petrobrain/types';
+import type { ModuleSelection, Principal } from '@petrobrain/types';
 
 import { decodePrincipal } from './jwt.js';
 
@@ -42,7 +42,8 @@ function resolveApiBaseUrl(): string {
 interface ChatStoreState {
   token: string | null;
   principal: Principal | null;
-  module: Module;
+  module: ModuleSelection;
+  modulePinned: boolean;
   assetContext: string | null;
   thinkingMode: ThinkingMode;
   apiBaseUrl: string;
@@ -69,7 +70,8 @@ interface ChatStoreState {
    */
   sessionExpiredReason: 'expired' | 'revoked' | 'invalid' | null;
   setToken: (token: string | null, principal?: PrincipalPayload | null) => void;
-  setModule: (m: Module) => void;
+  setModule: (m: ModuleSelection) => void;
+  setModulePinned: (pinned: boolean) => void;
   setAssetContext: (asset: string | null) => void;
   setThinkingMode: (m: ThinkingMode) => void;
   setWebSearchEnabled: (enabled: boolean) => void;
@@ -95,7 +97,8 @@ export const useChatStore = create<ChatStoreState>()(
     (set) => ({
       token: null,
       principal: null,
-      module: 'general',
+      module: 'auto',
+      modulePinned: false,
       assetContext: null,
       thinkingMode: 'default',
       apiBaseUrl: resolveApiBaseUrl(),
@@ -109,7 +112,11 @@ export const useChatStore = create<ChatStoreState>()(
           token,
           principal: principalPayload ? principalFromPayload(principalPayload) : decodePrincipal(token),
         }),
-      setModule: (module) => set({ module }),
+      setModule: (module) => set({
+        module,
+        ...(module === 'auto' ? { modulePinned: false } : {}),
+      }),
+      setModulePinned: (modulePinned) => set({ modulePinned }),
       setAssetContext: (assetContext) => set({ assetContext }),
       setThinkingMode: (thinkingMode) => set({ thinkingMode }),
       setWebSearchEnabled: (webSearchEnabled) => set({ webSearchEnabled }),
@@ -140,6 +147,7 @@ export const useChatStore = create<ChatStoreState>()(
         token: s.token,
         principal: s.principal,
         module: s.module,
+        modulePinned: s.modulePinned,
         assetContext: s.assetContext,
         thinkingMode: s.thinkingMode,
         webSearchEnabled: s.webSearchEnabled,
@@ -148,6 +156,15 @@ export const useChatStore = create<ChatStoreState>()(
         // intent for the next send; reload should not silently force-open the
         // canvas on the next turn.
       }),
+      version: 2,
+      migrate: (persisted, version) => {
+        const state = persisted as Partial<ChatStoreState>;
+        if (version < 2 && state.module === 'general') {
+          state.module = 'auto';
+        }
+        if (state.modulePinned === undefined) state.modulePinned = false;
+        return state as ChatStoreState;
+      },
       onRehydrateStorage: () => (state) => {
         // Re-derive the principal in case the persisted shape predates a schema bump,
         // but keep the richer auth response email when older tokens do not carry it.

@@ -159,6 +159,7 @@ MODULE_TOOLS = {
     "ptw": ["build_ptw_template", "web_search"],
     "research": ["web_search"],
     "general": ["web_search"],
+    "documents": [],
 }
 
 

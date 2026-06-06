@@ -91,7 +91,9 @@ export function ComposerMenu({
     // Pin skills that match the active module to the top, but keep the
     // others so the user can still pick "summarize SOP" while inside
     // emissions_mrv, etc.
-    const matches = SKILLS.filter((s) => s.module === module || module === 'general');
+    const matches = SKILLS.filter(
+      (s) => s.module === module || module === 'general' || module === 'auto',
+    );
     const rest = SKILLS.filter((s) => !matches.includes(s));
     return [...matches, ...rest];
   }

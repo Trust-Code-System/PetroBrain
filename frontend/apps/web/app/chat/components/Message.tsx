@@ -99,11 +99,36 @@ function UserMessageView({
         </p>
       ) : null}
       <div className="mt-1.5 flex items-center justify-end gap-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-primary-700/70 dark:text-primary-300/70">
-        <span>{message.module}</span>
+        <span>{moduleLabel(message.module)}</span>
+        {message.modulePinned ? <span>· pinned</span> : null}
         {message.assetContext ? <span>· asset: {message.assetContext}</span> : null}
       </div>
+      {message.routingNotice ? (
+        <p
+          role={message.routingWarning ? 'alert' : 'status'}
+          className={clsx(
+            'mt-2 rounded-lg px-2.5 py-1.5 text-[11px] normal-case tracking-normal',
+            message.routingWarning
+              ? 'bg-amber-100/80 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200'
+              : 'bg-white/65 text-primary-800 dark:bg-neutral-900/45 dark:text-primary-200',
+          )}
+        >
+          {message.routingNotice}
+        </p>
+      ) : null}
     </article>
   );
+}
+
+function moduleLabel(module: Extract<MessageType, { role: 'user' }>['module']): string {
+  return {
+    general: 'General',
+    research: 'Research',
+    well_control: 'Well Control',
+    emissions_mrv: 'Emissions / MRV',
+    ptw: 'PTW',
+    documents: 'Documents',
+  }[module];
 }
 
 function AssistantMessageView({

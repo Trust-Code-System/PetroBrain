@@ -81,6 +81,12 @@ MODULE_PREAMBLES = {
         "not a quote."
     ),
     "ptw": PTW_PREAMBLE,
+    "documents": (
+        "<module>Document intelligence</module>\n"
+        "Analyze the user's attached oil-and-gas documents. Summarize, compare, "
+        "extract obligations, and cite page or section details only when those "
+        "details are visible in the supplied content. Never invent unread pages."
+    ),
     "general": "",
 }
 

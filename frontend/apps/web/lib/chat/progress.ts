@@ -48,6 +48,13 @@ const MODE_STEPS: Record<Module, Array<[string, string]>> = {
     ['synthesis', 'Drafting final answer'],
     ['finalize', 'Finalizing response'],
   ],
+  documents: [
+    ['understand', 'Understanding your document request'],
+    ['plan', 'Planning document analysis'],
+    ['internal_retrieval', 'Reading attached documents'],
+    ['synthesis', 'Preparing document findings'],
+    ['finalize', 'Finalizing response'],
+  ],
 };
 
 export function initialWorkingSteps(module: Module): WorkingStep[] {

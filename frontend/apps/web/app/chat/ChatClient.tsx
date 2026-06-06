@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import type { Citation, ToolResult } from '@petrobrain/types';
+import type { Citation, Module, ToolResult } from '@petrobrain/types';
 
 import { useChatStore } from '@/lib/chat/store';
 import { ownerKeyOf, useConversationsStore } from '@/lib/chat/conversations';
@@ -100,6 +100,7 @@ export function ChatClient() {
   const token = useChatStore((s) => s.token);
   const principal = useChatStore((s) => s.principal);
   const module = useChatStore((s) => s.module);
+  const modulePinned = useChatStore((s) => s.modulePinned);
   const assetContext = useChatStore((s) => s.assetContext);
   const thinkingMode = useChatStore((s) => s.thinkingMode);
   const apiBaseUrl = useChatStore((s) => s.apiBaseUrl);
@@ -315,7 +316,9 @@ export function ChatClient() {
           id: nextId('u'),
           role: 'user',
           text: trimmed,
-          module,
+          module: module === 'auto' ? 'general' : module,
+          requestedModule: module,
+          modulePinned,
           assetContext,
           createdAt: Date.now(),
         };
@@ -363,15 +366,22 @@ export function ChatClient() {
               : null,
       }));
 
-      const effectiveModule = routeModule(trimmed, module);
-      if (effectiveModule !== module) {
-        setModule(effectiveModule);
-      }
+      const routing = routeModule(trimmed, module, {
+        pinned: modulePinned,
+        hasAttachments: attachments.length > 0,
+      });
+      const effectiveModule = routing.resolvedModule;
       const userMsg: Message = {
         id: nextId('u'),
         role: 'user',
         text: trimmed,
         module: effectiveModule,
+        requestedModule: module,
+        modulePinned: modulePinned && module !== 'auto',
+        routingNotice: routing.notice,
+        routingWarning: Boolean(modulePinned && routing.detectedModule && routing.detectedModule !== effectiveModule),
+        routingConfidence: routing.confidence,
+        routingReason: routing.reason,
         assetContext,
         createdAt: Date.now(),
         ...(attachments.length > 0 ? { attachments } : {}),
@@ -459,6 +469,10 @@ export function ChatClient() {
           body: {
             message: wireMessage,
             module: effectiveModule,
+            requested_module: module,
+            auto_route_enabled: !modulePinned,
+            module_pinned: modulePinned && module !== 'auto',
+            conversation_context: conversationContext(baseMessages),
             asset_context: assetContext,
             user_role: principal.role,
             thinking_mode: thinkingMode,
@@ -477,13 +491,13 @@ export function ChatClient() {
             }
             // Citations, tool activity, and flags are metadata. They can
             // render immediately without forcing buffered answer text out.
-            workingMessages = applyEvent(workingMessages, assistantId, event);
+            workingMessages = applyEvent(workingMessages, assistantId, event, userMsg.id);
             setMessagesInStore(convoId!, workingMessages, ownerKey);
           },
         });
         await streamer.finish(controller.signal);
         if (doneEvent) {
-          workingMessages = applyEvent(workingMessages, assistantId, doneEvent);
+          workingMessages = applyEvent(workingMessages, assistantId, doneEvent, userMsg.id);
           setMessagesInStore(convoId!, workingMessages, ownerKey);
         }
         notifyAnswerReady(notificationTitle);
@@ -551,13 +565,13 @@ export function ChatClient() {
       customInstructions,
       expireSession,
       module,
+      modulePinned,
       newConversation,
       notifyAnswerReady,
       ownerKey,
       principal,
       sending,
       setMessagesInStore,
-      setModule,
       setTitleFromFirstMessage,
       thinkingMode,
       token,
@@ -1203,8 +1217,29 @@ export function applyEvent(
   messages: Message[],
   assistantId: string,
   event: StreamEvent,
+  userMessageId?: string,
 ): Message[] {
   return messages.map((m) => {
+    if (event.event === 'routing' && m.role === 'user' && m.id === userMessageId) {
+      const resolvedModule = asModule(event.data['resolved_module']);
+      const notice = typeof event.data['user_visible_notice'] === 'string'
+        ? event.data['user_visible_notice']
+        : null;
+      const detected = asModule(event.data['detected_module']);
+      return {
+        ...m,
+        ...(resolvedModule ? { module: resolvedModule } : {}),
+        routingNotice: notice,
+        routingWarning: Boolean(m.modulePinned && detected && resolvedModule && detected !== resolvedModule),
+        ...(typeof event.data['routing_confidence'] === 'string'
+          ? { routingConfidence: event.data['routing_confidence'] }
+          : {}),
+        ...(typeof event.data['routing_reason'] === 'string'
+          ? { routingReason: event.data['routing_reason'] }
+          : {}),
+      };
+    }
+    if (event.event === 'routing') return m;
     if (m.id !== assistantId || m.role !== 'assistant') return m;
     switch (event.event) {
       case 'token':
@@ -1269,9 +1304,29 @@ export function applyEvent(
   });
 }
 
+function conversationContext(messages: Message[]): Array<Record<string, unknown>> {
+  return messages.slice(-6).map((message) => ({
+    role: message.role,
+    text: message.text.slice(0, 500),
+    ...(message.role === 'user' ? { module: message.module } : {}),
+  }));
+}
+
+function asModule(value: unknown): Module | null {
+  return value === 'general'
+    || value === 'research'
+    || value === 'well_control'
+    || value === 'emissions_mrv'
+    || value === 'ptw'
+    || value === 'documents'
+    ? value
+    : null;
+}
+
 function applyProgressEvent(
   message: AssistantMessage,
   event: Extract<StreamEvent, { event:
+    | 'routing'
     | 'status'
     | 'research_plan'
     | 'source_search_started'

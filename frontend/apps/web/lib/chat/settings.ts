@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
-import type { Module } from '@petrobrain/types';
+import type { ModuleSelection } from '@petrobrain/types';
 
 export type SendShortcut = 'enter' | 'shift_enter';
 export type Theme = 'light' | 'dark' | 'system';
@@ -16,7 +16,7 @@ export interface AppSettings {
   /** Which keystroke submits the composer. */
   sendShortcut: SendShortcut;
   /** Default module preselected when starting a new chat. */
-  defaultModule: Module;
+  defaultModule: ModuleSelection;
   /** Whether to render markdown in answers (kept on by default). */
   renderMarkdown: boolean;
   /** Browser notification on long-running answer completion. */
@@ -31,7 +31,7 @@ interface SettingsActions {
   setCallMeName: (v: string) => void;
   setCustomInstructions: (v: string) => void;
   setSendShortcut: (v: SendShortcut) => void;
-  setDefaultModule: (v: Module) => void;
+  setDefaultModule: (v: ModuleSelection) => void;
   setRenderMarkdown: (v: boolean) => void;
   setEnableNotifications: (v: boolean) => void;
   setTheme: (v: Theme) => void;
@@ -43,7 +43,7 @@ const DEFAULTS: Omit<AppSettings, 'hasHydrated'> = {
   callMeName: '',
   customInstructions: '',
   sendShortcut: 'enter',
-  defaultModule: 'general',
+  defaultModule: 'auto',
   renderMarkdown: true,
   enableNotifications: false,
   theme: 'system',
@@ -90,6 +90,14 @@ export const useSettingsStore = create<AppSettings & SettingsActions>()(
         enableNotifications: s.enableNotifications,
         theme: s.theme,
       }),
+      version: 2,
+      migrate: (persisted, version) => {
+        const state = persisted as Partial<AppSettings>;
+        if (version < 2 && state.defaultModule === 'general') {
+          state.defaultModule = 'auto';
+        }
+        return state as AppSettings & SettingsActions;
+      },
       onRehydrateStorage: () => (state) => {
         if (state) state.hasHydrated = true;
       },

@@ -389,7 +389,66 @@ describe('Message - user prompt', () => {
     };
     const { container } = render(<Message message={message} />);
     expect(within(container).getByText('Build a kill sheet for OML-99 K-101.')).toBeInTheDocument();
-    expect(within(container).getByText('well_control')).toBeInTheDocument();
+    expect(within(container).getByText('Well Control')).toBeInTheDocument();
     expect(within(container).getByText(/asset: eq-1/)).toBeInTheDocument();
+  });
+
+  it('updates the user message with the backend-resolved module and route notice', () => {
+    const userMessage: MessageType = {
+      id: 'u-route',
+      role: 'user',
+      text: 'Calculate flaring emissions.',
+      module: 'research',
+      requestedModule: 'research',
+      assetContext: null,
+      createdAt: 0,
+    };
+    const assistant = blankAssistant();
+    const routed = applyEvent(
+      [userMessage, assistant],
+      ASSISTANT_ID,
+      {
+        event: 'routing',
+        data: {
+          type: 'routing',
+          step_id: 'routing',
+          status: 'completed',
+          message: 'Switched to Emissions / MRV for this turn.',
+          timestamp: '2026-06-06T10:00:00Z',
+          resolved_module: 'emissions_mrv',
+          routing_confidence: 'high',
+          routing_reason: 'This request concerns emissions quantification or MRV.',
+          user_visible_notice: 'Switched to Emissions / MRV for this turn.',
+        },
+      },
+      'u-route',
+    );
+
+    render(<Message message={routed[0]!} />);
+    expect(screen.getByText('Emissions / MRV')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Switched to Emissions / MRV for this turn.',
+    );
+  });
+
+  it('shows a warning when a pinned module conflicts with detected intent', () => {
+    const message: MessageType = {
+      id: 'u-pinned',
+      role: 'user',
+      text: 'Create a kill sheet.',
+      module: 'research',
+      requestedModule: 'research',
+      modulePinned: true,
+      routingNotice: 'This question appears to match Well Control, but Research is pinned.',
+      routingWarning: true,
+      assetContext: null,
+      createdAt: 0,
+    };
+
+    render(<Message message={message} />);
+    expect(screen.getAllByText(/pinned/i)).toHaveLength(2);
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'This question appears to match Well Control, but Research is pinned.',
+    );
   });
 });

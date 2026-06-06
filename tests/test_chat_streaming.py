@@ -148,6 +148,110 @@ def test_chat_route_overrides_general_with_research_intent(monkeypatch):
     assert events[-1][1]["audit"]["module"] == "research"
 
 
+def test_chat_route_switches_unpinned_specialist_and_streams_routing_metadata(monkeypatch):
+    observed = {}
+
+    class RoutingOrchestrator:
+        async def stream_handle(self, message, **kwargs):
+            observed["module"] = kwargs["module"]
+            yield {
+                "event": "done",
+                "data": {
+                    "answer": "Calculated.",
+                    "tool_results": [],
+                    "flags": [],
+                    "audit": {"module": kwargs["module"]},
+                    "evidence_pack": {},
+                },
+            }
+
+    monkeypatch.setattr(routes_chat, "_orch", RoutingOrchestrator())
+
+    events = stream_chat({
+        "message": "Calculate flaring emissions for this source.",
+        "module": "research",
+        "requested_module": "research",
+        "auto_route_enabled": True,
+        "module_pinned": False,
+    })
+
+    assert observed["module"] == "emissions_mrv"
+    assert events[0][0] == "routing"
+    assert events[0][1]["resolved_module"] == "emissions_mrv"
+    assert events[0][1]["requested_module"] == "research"
+    assert events[0][1]["user_visible_notice"] == (
+        "Switched to Emissions / MRV for this turn."
+    )
+    assert events[-1][1]["resolved_module"] == "emissions_mrv"
+
+
+def test_chat_route_respects_pinned_module_and_streams_conflict_warning(monkeypatch):
+    observed = {}
+
+    class RoutingOrchestrator:
+        async def stream_handle(self, message, **kwargs):
+            observed["module"] = kwargs["module"]
+            yield {
+                "event": "done",
+                "data": {
+                    "answer": "Pinned response.",
+                    "tool_results": [],
+                    "flags": [],
+                    "audit": {"module": kwargs["module"]},
+                    "evidence_pack": {},
+                },
+            }
+
+    monkeypatch.setattr(routes_chat, "_orch", RoutingOrchestrator())
+
+    events = stream_chat({
+        "message": "Calculate flaring emissions for this source.",
+        "module": "research",
+        "requested_module": "research",
+        "module_pinned": True,
+    })
+
+    assert observed["module"] == "research"
+    assert events[0][1]["detected_module"] == "emissions_mrv"
+    assert events[0][1]["user_visible_notice"] == (
+        "This question appears to match Emissions / MRV, but Research is pinned."
+    )
+
+
+def test_non_streaming_chat_returns_resolved_module_metadata(monkeypatch):
+    observed = {}
+
+    class RoutingOrchestrator:
+        async def handle(self, message, **kwargs):
+            observed["module"] = kwargs["module"]
+            from app.core.orchestrator import Turn
+            return Turn(answer="Research answer.")
+
+    monkeypatch.setattr(routes_chat, "_orch", RoutingOrchestrator())
+
+    response = client.post(
+        "/chat",
+        headers=auth_headers(
+            tenant_id="tenant-stream", role="engineer", allowed_assets=["*"]
+        ),
+        json={
+            "message": "Run a deep research report on Nigerian licensing.",
+            "module": "emissions_mrv",
+            "requested_module": "emissions_mrv",
+            "auto_route_enabled": True,
+            "module_pinned": False,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert observed["module"] == "research"
+    assert body["requested_module"] == "emissions_mrv"
+    assert body["resolved_module"] == "research"
+    assert body["routing_confidence"] == "high"
+    assert body["user_visible_notice"] == "Switched to Research for this turn."
+
+
 def test_stream_chat_emits_tokens_then_done(monkeypatch):
     # The "general" module now exposes the web_search tool, so the orchestrator
     # makes a non-streaming complete() call first to detect any tool_use. When
@@ -441,6 +545,6 @@ def test_stream_errors_emit_safe_error_event(monkeypatch):
 
     events = stream_chat({"message": "Research Nigeria upstream", "module": "research"})
 
-    assert event_names(events) == ["error", "done"]
-    assert events[0][1]["status"] == "failed"
+    assert event_names(events) == ["routing", "error", "done"]
+    assert events[1][1]["status"] == "failed"
     assert "private provider failure detail" not in json.dumps(events)

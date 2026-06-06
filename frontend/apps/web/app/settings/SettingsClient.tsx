@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 
-import type { Module } from '@petrobrain/types';
+import type { ModuleSelection } from '@petrobrain/types';
 import { BackLink } from '@petrobrain/ui';
 
 import { AuthGate } from '../chat/components/AuthGate';
@@ -44,12 +44,14 @@ const SECTIONS: SectionDef[] = [
   { key: 'account', label: 'Account', icon: 'account' },
 ];
 
-const MODULE_OPTIONS: { value: Module; label: string; description: string }[] = [
-  { value: 'general', label: 'General', description: 'Domain-locked Q&A across SOPs and standards.' },
+const MODULE_OPTIONS: { value: ModuleSelection; label: string; description: string }[] = [
+  { value: 'auto', label: 'Auto', description: 'Route every question to the best PetroBrain module.' },
+  { value: 'general', label: 'General', description: 'Normal oil-and-gas Q&A without specialist tools.' },
   { value: 'research', label: 'Research', description: 'Cited sector, regulatory, market, and investment analysis.' },
   { value: 'well_control', label: 'Well Control', description: 'Kill sheets, kick detection, shut-in math.' },
   { value: 'emissions_mrv', label: 'Emissions / MRV', description: 'NUPRC Tier-3 inventories + GHGEMP.' },
   { value: 'ptw', label: 'PTW', description: 'Controlled permit-to-work templates and verification.' },
+  { value: 'documents', label: 'Documents', description: 'Analyze uploaded oil-and-gas documents.' },
 ];
 
 const THEME_OPTIONS: { value: Theme; label: string; description: string }[] = [
@@ -527,7 +529,7 @@ export function SettingsClient() {
                   label="Default module"
                   description="Preselected when you start a new chat."
                 >
-                  <ChoiceGroup<Module>
+                  <ChoiceGroup<ModuleSelection>
                     name="default-module"
                     value={s.defaultModule}
                     onChange={s.setDefaultModule}

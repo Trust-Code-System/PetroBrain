@@ -1,4 +1,4 @@
-import type { EvidencePack, Module } from '@petrobrain/types';
+import type { EvidencePack, Module, ModuleSelection } from '@petrobrain/types';
 
 export interface StreamChatAttachment {
   name: string;
@@ -11,6 +11,10 @@ export interface StreamChatAttachment {
 export interface StreamChatRequest {
   message: string;
   module: Module;
+  requested_module?: ModuleSelection;
+  auto_route_enabled?: boolean;
+  module_pinned?: boolean;
+  conversation_context?: Array<Record<string, unknown>>;
   asset_context?: string | null;
   user_role?: string | null;
   jurisdiction?: string | null;
@@ -39,6 +43,7 @@ export interface StreamProgressData {
 }
 
 export type ProgressEventName =
+  | 'routing'
   | 'status'
   | 'research_plan'
   | 'source_search_started'
@@ -91,6 +96,13 @@ export type StreamEvent =
         step_id?: string;
         status?: StreamStepStatus;
         timestamp?: string;
+        requested_module?: string;
+        resolved_module?: Module;
+        routing_confidence?: string;
+        routing_reason?: string;
+        should_prompt_user?: boolean;
+        user_visible_notice?: string | null;
+        routing_safety_flags?: string[];
       };
     };
 

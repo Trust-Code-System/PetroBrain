@@ -30,6 +30,7 @@ PROGRESS_EVENT_TYPES = {
     "final",
     "done",
     "error",
+    "routing",
 }
 
 
@@ -102,6 +103,7 @@ def _default_step_id(event_type: str) -> str:
         "tool_result": "tool",
         "citation": "citations",
         "flag": "safety",
+        "routing": "routing",
     }.get(event_type, event_type)
 
 
@@ -123,4 +125,5 @@ def _default_message(event_type: str) -> str:
         "tool_result": "Deterministic check completed.",
         "citation": "Source added.",
         "flag": "Safety check updated.",
+        "routing": "Module selected.",
     }.get(event_type, "Working...")

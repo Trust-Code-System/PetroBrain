@@ -4,18 +4,20 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import clsx from 'clsx';
 
-import type { Module } from '@petrobrain/types';
+import type { ModuleSelection } from '@petrobrain/types';
 import { Select } from '@petrobrain/ui';
 
 import { fetchAssets } from '@/lib/chat/assets';
 import { useChatStore } from '@/lib/chat/store';
 
-const MODULES: { value: Module; label: string; description: string }[] = [
-  { value: 'general', label: 'General', description: 'Domain-locked Q&A across SOPs and standards.' },
-  { value: 'research', label: 'RESEARCH', description: 'Cited sector, regulatory, market, and investment analysis.' },
+const MODULES: { value: ModuleSelection; label: string; description: string }[] = [
+  { value: 'auto', label: 'Auto', description: 'Automatically routes each question to the best PetroBrain module.' },
+  { value: 'general', label: 'General', description: 'Normal oil-and-gas Q&A without forced specialist tools.' },
+  { value: 'research', label: 'Research', description: 'Cited sector, regulator, market, and investment analysis.' },
   { value: 'well_control', label: 'Well Control', description: 'Kill sheets, kick detection, shut-in math.' },
-  { value: 'emissions_mrv', label: 'Emissions / MRV', description: 'NUPRC Tier-3 inventories + GHGEMP.' },
-  { value: 'ptw', label: 'PTW', description: 'Controlled permit-to-work templates and verification.' },
+  { value: 'emissions_mrv', label: 'Emissions / MRV', description: 'NUPRC Tier-3 inventories, GHGEMP, methane, flaring, and venting.' },
+  { value: 'ptw', label: 'PTW', description: 'Permit-to-work drafts, hazards, controls, and verification.' },
+  { value: 'documents', label: 'Documents', description: 'Analyze uploaded oil-and-gas documents.' },
 ];
 
 /**
@@ -28,6 +30,8 @@ export function ModulePill() {
   const apiBaseUrl = useChatStore((s) => s.apiBaseUrl);
   const module = useChatStore((s) => s.module);
   const setModule = useChatStore((s) => s.setModule);
+  const modulePinned = useChatStore((s) => s.modulePinned);
+  const setModulePinned = useChatStore((s) => s.setModulePinned);
   const assetContext = useChatStore((s) => s.assetContext);
   const setAssetContext = useChatStore((s) => s.setAssetContext);
 
@@ -86,6 +90,11 @@ export function ModulePill() {
           PB
         </span>
         <span className="font-semibold tracking-tight">{current.label}</span>
+        {modulePinned && module !== 'auto' ? (
+          <span className="rounded-full bg-primary-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-primary-700 dark:bg-primary-900/50 dark:text-primary-300">
+            Pinned
+          </span>
+        ) : null}
         {activeAsset ? (
           <span className="hidden items-center gap-1 border-l border-neutral-200 pl-2 text-xs font-medium text-neutral-500 dark:border-neutral-700 dark:text-neutral-400 sm:flex">
             <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
@@ -136,6 +145,7 @@ export function ModulePill() {
                     type="button"
                     onClick={() => {
                       setModule(m.value);
+                      if (m.value === 'auto') setModulePinned(false);
                       setOpen(false);
                     }}
                     className={clsx(
@@ -181,6 +191,41 @@ export function ModulePill() {
               );
             })}
           </ul>
+
+          {module !== 'auto' ? (
+            <div className="border-t border-neutral-100 px-3 py-2.5 dark:border-neutral-800">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={modulePinned}
+                onClick={() => setModulePinned(!modulePinned)}
+                className="flex w-full items-center justify-between gap-3 rounded-lg px-1 py-1 text-left"
+              >
+                <span>
+                  <span className="block text-xs font-semibold text-neutral-800 dark:text-neutral-100">
+                    Pin this module
+                  </span>
+                  <span className="block text-[11px] text-neutral-500 dark:text-neutral-400">
+                    Keep using {current.label}, even when another module appears to match.
+                  </span>
+                </span>
+                <span
+                  aria-hidden
+                  className={clsx(
+                    'relative h-5 w-9 shrink-0 rounded-full transition-colors',
+                    modulePinned ? 'bg-primary-600' : 'bg-neutral-300 dark:bg-neutral-700',
+                  )}
+                >
+                  <span
+                    className={clsx(
+                      'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform',
+                      modulePinned ? 'translate-x-[18px]' : 'translate-x-0.5',
+                    )}
+                  />
+                </span>
+              </button>
+            </div>
+          ) : null}
 
           <div className="border-t border-neutral-100 bg-neutral-50/60 px-3 py-2.5 dark:border-neutral-800 dark:bg-neutral-900/60">
             <Select

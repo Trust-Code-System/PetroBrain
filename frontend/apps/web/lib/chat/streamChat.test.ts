@@ -83,6 +83,23 @@ describe('consumeSse', () => {
     });
   });
 
+  it('parses authoritative routing metadata', async () => {
+    const stream = makeStream([
+      'event: routing\ndata: {"type":"routing","step_id":"routing","status":"completed","message":"Switched to Emissions / MRV for this turn.","timestamp":"2026-06-06T10:00:00Z","requested_module":"research","resolved_module":"emissions_mrv","routing_confidence":"high"}\n\n',
+    ]);
+    const out: StreamEvent[] = [];
+
+    await consumeSse(stream, (event) => out.push(event));
+
+    expect(out[0]).toMatchObject({
+      event: 'routing',
+      data: {
+        requested_module: 'research',
+        resolved_module: 'emissions_mrv',
+      },
+    });
+  });
+
   it('ignores malformed records without throwing', async () => {
     const stream = makeStream(['event: token\ndata: not-json\n\n', 'event: token\ndata: {"text":"ok"}\n\n']);
     const out: StreamEvent[] = [];

@@ -11,7 +11,15 @@
 
 export type Role = 'platform_admin' | 'admin' | 'engineer' | 'field' | 'hse';
 
-export type Module = 'general' | 'research' | 'well_control' | 'emissions_mrv' | 'ptw';
+export type Module =
+  | 'general'
+  | 'research'
+  | 'well_control'
+  | 'emissions_mrv'
+  | 'ptw'
+  | 'documents';
+
+export type ModuleSelection = 'auto' | Module;
 
 export interface Principal {
   tenantId: string;

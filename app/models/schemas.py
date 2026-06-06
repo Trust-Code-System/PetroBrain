@@ -28,7 +28,14 @@ class ChatAttachment(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
-    module: str = "general"  # general | research | well_control | emissions_mrv | ptw
+    # `module` remains for backward compatibility. New clients send
+    # requested_module separately so selector state is not confused with the
+    # resolved execution module.
+    module: str = "general"
+    requested_module: str | None = None
+    auto_route_enabled: bool = True
+    module_pinned: bool = False
+    conversation_context: list[dict[str, Any]] = Field(default_factory=list)
     user_role: str | None = None
     jurisdiction: str | None = None
     asset_context: str | None = None
@@ -55,6 +62,13 @@ class ChatResponse(BaseModel):
     # Same id is written to the audit row's metadata so feedback can be
     # joined to the underlying request_hash + retrieved_clauses later.
     turn_id: str = ""
+    requested_module: str = "general"
+    resolved_module: str = "general"
+    routing_confidence: str = "low"
+    routing_reason: str = ""
+    should_prompt_user: bool = False
+    user_visible_notice: str | None = None
+    routing_safety_flags: list[str] = Field(default_factory=list)
 
 
 class FeedbackRequest(BaseModel):

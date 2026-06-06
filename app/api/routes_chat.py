@@ -14,7 +14,7 @@ from app.core.audit_hash import sha256_canonical
 from app.core.observability import increment_token_cost_counters, record_chat_turn
 from app.core.orchestrator import Orchestrator, Turn
 from app.core.progress import normalize_stream_data
-from app.core.module_routing import route_module
+from app.core.module_routing import ModuleRouteDecision, ModuleRouter
 from app.core import turn_attribution
 from app.core.chunk_weight_updater import update_weights_from_feedback
 from app.db.audit_events_repository import get_audit_events_repository
@@ -30,6 +30,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 _orch = Orchestrator()   # in app startup, inject the retriever
 audit_logger = get_audit_logger()
 logger = structlog.get_logger(__name__)
+module_router = ModuleRouter()
 
 
 @router.post("", response_model=ChatResponse)
@@ -38,13 +39,22 @@ async def chat(
     stream: bool = Query(default=False),
     who: Principal = Depends(get_principal),
 ):
+    routing = module_router.route(
+        user_message=req.message,
+        selected_module=req.requested_module or req.module,
+        auto_route_enabled=req.auto_route_enabled,
+        module_pinned=req.module_pinned,
+        attachments=req.attachments,
+        asset_context=req.asset_context,
+        conversation_context=req.conversation_context,
+    )
     req = req.model_copy(
-        update={"module": route_module(req.message, req.module)}
+        update={"module": routing.selected_module_for_this_turn}
     )
     turn_id = str(uuid4())
     if stream:
         return StreamingResponse(
-            _stream_chat(req=req, who=who, turn_id=turn_id),
+            _stream_chat(req=req, who=who, turn_id=turn_id, routing=routing),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
@@ -68,12 +78,30 @@ async def chat(
         citations=turn.citations,
         evidence_pack=turn.evidence_pack,
         turn_id=turn_id,
+        requested_module=routing.requested_module,
+        resolved_module=routing.selected_module_for_this_turn,
+        routing_confidence=routing.routing_confidence,
+        routing_reason=routing.reason,
+        should_prompt_user=routing.should_prompt_user,
+        user_visible_notice=routing.user_visible_notice,
+        routing_safety_flags=routing.safety_flags,
     )
 
 
-async def _stream_chat(req: ChatRequest, who: Principal, turn_id: str):
+async def _stream_chat(
+    req: ChatRequest,
+    who: Principal,
+    turn_id: str,
+    routing: ModuleRouteDecision,
+):
     started = perf_counter()
     final_data = None
+    yield _sse("routing", normalize_stream_data("routing", {
+        **routing.as_dict(),
+        "step_id": "routing",
+        "status": "completed",
+        "message": routing.user_visible_notice or routing.reason,
+    }))
     try:
         async for item in _orch.stream_handle(
             req.message, module=req.module, tenant_id=who.tenant_id,
@@ -86,7 +114,7 @@ async def _stream_chat(req: ChatRequest, who: Principal, turn_id: str):
             data = normalize_stream_data(event, item["data"])
             if event == "done":
                 # Inject turn_id so the frontend can wire the feedback chips.
-                data = {**data, "turn_id": turn_id}
+                data = {**data, "turn_id": turn_id, **routing.as_dict()}
                 final_data = data
             yield _sse(event, data)
     except Exception:  # noqa: BLE001 - stream a safe terminal event
@@ -144,6 +172,9 @@ def _finalize_chat_turn(*, req: ChatRequest, turn: Turn, who: Principal,
         request={
             "request_hash": sha256_canonical(req.model_dump()),
             "module": req.module,
+            "requested_module": req.requested_module or req.module,
+            "auto_route_enabled": req.auto_route_enabled,
+            "module_pinned": req.module_pinned,
             "attachment_count": len(req.attachments or []),
             "disable_web_search": req.disable_web_search,
         },

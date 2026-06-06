@@ -33,6 +33,12 @@ export interface UserMessage {
   role: 'user';
   text: string;
   module: Module;
+  requestedModule?: string;
+  modulePinned?: boolean;
+  routingNotice?: string | null;
+  routingWarning?: boolean;
+  routingConfidence?: string;
+  routingReason?: string;
   assetContext: string | null;
   attachments?: MessageAttachment[];
   createdAt: number;
