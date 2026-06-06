@@ -17,7 +17,9 @@ export type Module =
   | 'well_control'
   | 'emissions_mrv'
   | 'ptw'
-  | 'documents';
+  | 'documents'
+  | 'tasks'
+  | 'audit';
 
 export type ModuleSelection = 'auto' | Module;
 

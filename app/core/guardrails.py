@@ -25,6 +25,14 @@ class GuardrailVerdict:
     flags: list[str] | None = None
 
 
+@dataclass(frozen=True)
+class SafetyEvent:
+    rule: str
+    severity: str
+    category: str
+    response: str
+
+
 # Out-of-domain quick filter (the LLM also enforces domain lock; this is defense in depth)
 _OFF_DOMAIN_HINTS = [
     r"\bwrite me a poem\b", r"\bmedical advice\b", r"\bwho should i vote\b",
@@ -32,29 +40,69 @@ _OFF_DOMAIN_HINTS = [
 ]
 
 # Attempts to defeat a safety system - hard refuse
-_BYPASS_PATTERNS = [
-    r"\bbypass (the )?(esd|shutdown|interlock|trip|alarm|gas detector|relief)\b",
-    r"\bdisable (the )?(safety|shutdown|interlock|trip|alarm|sis)\b",
-    r"\boverride (the )?(trip|interlock|shutdown|sis)\b",
-    r"\bforce (the )?valve\b", r"\bdefeat (the )?(interlock|safety)\b",
-    r"\binhibit (the )?(alarm|trip|f&g|fire and gas)\b",
-]
-
-_BYPASS_REFUSAL = (
-    "I can't help with defeating, bypassing, or disabling a safety system, interlock, "
-    "trip, alarm, or relief device - doing so removes a layer of protection that exists "
-    "to prevent harm. If a safety function genuinely needs to be inhibited for a defined "
-    "task, that goes through your Management of Change (MOC) process and an authorized "
-    "override/inhibit permit, controlled by the competent authority. I'm glad to explain "
-    "how that controlled process works, or why the protection is there."
+_SAFETY_RULES: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
+    (
+        "tenant_boundary_bypass",
+        "critical",
+        "security",
+        (
+            r"\b(?:access|search|reveal|show)\b.{0,45}\b(?:another|other|all)\s+tenants?\b",
+            r"\breveal\b.{0,30}\banother tenant'?s (?:documents?|reports?|memory|audit)\b",
+            r"\bignore tenant isolation\b",
+        ),
+    ),
+    (
+        "regulatory_falsification",
+        "critical",
+        "compliance",
+        (
+            r"\b(?:falsify|fake|understate|hide|remove)\b.{0,55}\b(?:emissions?|flaring|methane|nuprc|compliance data|regulatory filing|incident evidence|near miss)\b",
+            r"\bsubmit false\b.{0,35}\b(?:report|filing|data)\b",
+            r"\brewrite\b.{0,50}\b(?:emissions?|flaring)\b.{0,25}\b(?:smaller|lower|less)\b",
+        ),
+    ),
+    (
+        "critical_safety_system_bypass",
+        "critical",
+        "safety",
+        (
+            r"\b(?:bypass|disable|override|defeat|inhibit)\b.{0,30}\b(?:esd|sis|bop|fire and gas|f&g)\b",
+            r"\boverride\b.{0,25}\bbop\b.{0,25}\b(?:kick|well control)\b",
+        ),
+    ),
+    (
+        "permit_or_interlock_bypass",
+        "high",
+        "safety",
+        (
+            r"\b(?:bypass|disable|override|defeat|inhibit)\b.{0,35}\b(?:shutdown|interlock|trip|alarm|gas detector|relief|safety system)\b",
+            r"\bcontinue hot work\b.{0,30}\bwithout (?:a )?permit\b",
+            r"\bfake\b.{0,20}\bptw\b.{0,20}\bsign[- ]?off\b",
+        ),
+    ),
+    (
+        "guardrail_or_audit_bypass",
+        "high",
+        "security",
+        (
+            r"\b(?:disable|remove|ignore|bypass)\b.{0,35}\b(?:guardrails?|safety banners?|audit logging|safety rules?)\b",
+            r"\breveal (?:the )?(?:system prompt|hidden prompt|developer instructions)\b",
+            r"\bignore previous instructions\b.{0,35}\b(?:guardrails?|system prompt|safety)\b",
+        ),
+    ),
 )
 
 
 def pre_check(user_text: str) -> GuardrailVerdict:
     t = user_text.lower()
-    if any(re.search(p, t) for p in _BYPASS_PATTERNS):
-        return GuardrailVerdict(allow=False, override_response=_BYPASS_REFUSAL,
-                                reason="bypass_attempt", flags=["safety_bypass"])
+    safety_event = detect_safety_event(user_text)
+    if safety_event:
+        return GuardrailVerdict(
+            allow=False,
+            override_response=safety_event.response,
+            reason="bypass_attempt",
+            flags=["safety_bypass"],
+        )
     if detect_live_event(user_text):
         # let the answer proceed, but lead with immediate action
         return GuardrailVerdict(allow=True, override_response=IMMEDIATE_ACTION,
@@ -70,6 +118,43 @@ def pre_check(user_text: str) -> GuardrailVerdict:
             reason="off_domain", flags=["off_domain"],
         )
     return GuardrailVerdict(allow=True)
+
+
+def detect_safety_event(user_text: str) -> SafetyEvent | None:
+    text = " ".join((user_text or "").lower().split())
+    for rule, severity, category, patterns in _SAFETY_RULES:
+        if any(re.search(pattern, text) for pattern in patterns):
+            return SafetyEvent(
+                rule=rule,
+                severity=severity,
+                category=category,
+                response=_refusal_for(category),
+            )
+    return None
+
+
+def _refusal_for(category: str) -> str:
+    if category == "compliance":
+        return (
+            "I can't help falsify, conceal, or understate emissions, incident, or "
+            "regulatory data. This request has been refused, logged, and escalated "
+            "for compliance review. I can help reconcile the figures, investigate "
+            "measurement errors, prepare a transparent correction note, or build an "
+            "evidence-backed report."
+        )
+    if category == "security":
+        return (
+            "I can't disclose another tenant's data, reveal protected system "
+            "instructions, or disable audit and security controls. This access or "
+            "bypass attempt has been refused, logged, and escalated for admin review."
+        )
+    return (
+        "I can't help bypass, disable, or override an ESD, SIS, fire-and-gas, BOP, "
+        "alarm, trip, interlock, permit, or other safety control. This safety-critical "
+        "request has been refused, logged, and escalated for admin review. Follow the "
+        "site emergency or stop-work procedure and contact the responsible supervisor "
+        "or competent authority."
+    )
 
 
 def post_check(answer_text: str, *, numbers_from_tools: bool,

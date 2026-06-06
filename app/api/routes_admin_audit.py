@@ -16,10 +16,16 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import csv
+import io
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 
 from app.api.deps import Principal, is_platform_admin, require_role
 from app.db.audit_events_repository import get_audit_events_repository
+from app.models.schemas import AuditExportRequest
 
 
 router = APIRouter(prefix="/admin/audit", tags=["admin", "audit"])
@@ -37,6 +43,8 @@ async def list_audit_events(
     user_id: str | None = Query(default=None),
     module: str | None = Query(default=None),
     action: str | None = Query(default=None),
+    risk_level: str | None = Query(default=None),
+    status: str | None = Query(default=None),
     limit: int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     offset: int = Query(default=0, ge=0),
     who: Principal = Depends(_admin_or_platform),
@@ -51,6 +59,8 @@ async def list_audit_events(
         user_id=user_id,
         module=module,
         action=action,
+        risk_level=risk_level,
+        status=status,
         limit=limit,
         offset=offset,
     )
@@ -61,6 +71,98 @@ async def list_audit_events(
         "limit": limit,
         "offset": offset,
     }
+
+
+@router.get("/safety-events")
+async def safety_events(who: Principal = Depends(_admin_or_platform)):
+    rows = _repository().query(
+        tenant_id=who.tenant_id, action="bypass_attempt", limit=200
+    )
+    return {"events": rows, "count": len(rows), "tenant_id": who.tenant_id}
+
+
+@router.get("/bypass-attempts")
+async def bypass_attempts(who: Principal = Depends(_admin_or_platform)):
+    return await safety_events(who)
+
+
+@router.get("/by-user/{user_id}")
+async def audit_by_user(user_id: str, who: Principal = Depends(_admin_or_platform)):
+    rows = _repository().query(tenant_id=who.tenant_id, user_id=user_id, limit=200)
+    return {"events": rows, "count": len(rows), "tenant_id": who.tenant_id}
+
+
+@router.get("/by-tenant/{tenant_id}")
+async def audit_by_tenant(tenant_id: str, who: Principal = Depends(_admin_or_platform)):
+    effective = _resolve_target_tenant(who, tenant_id)
+    rows = _repository().query(tenant_id=effective, limit=200)
+    return {"events": rows, "count": len(rows), "tenant_id": effective}
+
+
+@router.get("/by-module/{module}")
+async def audit_by_module(module: str, who: Principal = Depends(_admin_or_platform)):
+    rows = _repository().query(tenant_id=who.tenant_id, module=module, limit=200)
+    return {"events": rows, "count": len(rows), "tenant_id": who.tenant_id}
+
+
+@router.get("/research/{research_id}")
+async def audit_for_research(
+    research_id: str, who: Principal = Depends(_admin_or_platform),
+):
+    rows = _repository().query(tenant_id=who.tenant_id, module="research", limit=500)
+    matches = [
+        row for row in rows
+        if str((row.get("usage") or {}).get("research_id") or "") == research_id
+    ]
+    return {"events": matches, "count": len(matches), "tenant_id": who.tenant_id}
+
+
+@router.get("/tasks/{task_id}")
+async def audit_for_task(task_id: str, who: Principal = Depends(_admin_or_platform)):
+    rows = _repository().query(tenant_id=who.tenant_id, limit=500)
+    matches = [
+        row for row in rows
+        if str((row.get("usage") or {}).get("task_id") or "") == task_id
+    ]
+    return {"events": matches, "count": len(matches), "tenant_id": who.tenant_id}
+
+
+@router.get("/{audit_id}")
+async def audit_detail(audit_id: str, who: Principal = Depends(_admin_or_platform)):
+    row = _repository().get(tenant_id=who.tenant_id, audit_id=audit_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="audit event not found")
+    return row
+
+
+@router.post("/export")
+async def export_audit(
+    req: AuditExportRequest, who: Principal = Depends(_admin_or_platform),
+):
+    tenant_id = _resolve_target_tenant(who, req.tenant_id)
+    rows = _repository().query(
+        tenant_id=tenant_id,
+        from_ts=_as_utc(req.from_),
+        to_ts=_as_utc(req.to),
+        user_id=req.user_id,
+        module=req.module,
+        action=req.action,
+        risk_level=req.risk_level,
+        limit=500,
+    )
+    if req.format.lower() == "csv":
+        buffer = io.StringIO()
+        fields = ["id", "ts", "tenant_id", "user_id", "role", "action", "module", "request_hash", "response_hash", "flags", "usage"]
+        writer = csv.DictWriter(buffer, fieldnames=fields)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({
+                **{key: row.get(key) for key in fields},
+                "flags": json.dumps(row.get("flags") or []),
+                "usage": json.dumps(row.get("usage") or {}),
+            })
+        return Response(buffer.getvalue(), media_type="text/csv")
+    return {"tenant_id": tenant_id, "events": rows, "count": len(rows)}
 
 
 def _resolve_target_tenant(principal: Principal, requested: str | None) -> str:

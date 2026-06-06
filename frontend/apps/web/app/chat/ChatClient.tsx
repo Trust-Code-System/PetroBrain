@@ -1319,6 +1319,8 @@ function asModule(value: unknown): Module | null {
     || value === 'emissions_mrv'
     || value === 'ptw'
     || value === 'documents'
+    || value === 'tasks'
+    || value === 'audit'
     ? value
     : null;
 }

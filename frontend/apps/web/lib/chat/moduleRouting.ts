@@ -15,9 +15,28 @@ const LABELS: Record<Module, string> = {
   emissions_mrv: 'Emissions / MRV',
   ptw: 'PTW',
   documents: 'Documents',
+  tasks: 'Tasks',
+  audit: 'Audit',
 };
 
 const routes: Array<{ module: Module; patterns: RegExp[] }> = [
+  {
+    module: 'audit',
+    patterns: [
+      /\baudit\s+trail\b/,
+      /\b(?:admin|audit)\s+logs?\b/,
+      /\b(?:bypass\s+attempts?|safety\s+flags|sources\s+used|tool\s+calls)\b/,
+    ],
+  },
+  {
+    module: 'tasks',
+    patterns: [
+      /\b(?:remind|reminder|schedule|recurring)\b/,
+      /\bcreate\b.{0,35}\btask\b/,
+      /\b(?:weekly|monthly|quarterly|yearly)\b.{0,40}\b(?:task|reminder|digest|report)\b/,
+      /\bcompliance\s+calendar\b/,
+    ],
+  },
   {
     module: 'well_control',
     patterns: [

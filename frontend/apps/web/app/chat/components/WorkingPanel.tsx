@@ -13,6 +13,10 @@ export interface WorkingPanelProps {
 export function WorkingPanel({ tool, result, defaultOpen = false }: WorkingPanelProps) {
   const [open, setOpen] = useState(defaultOpen);
 
+  if (tool === 'create_task' && isObject(result)) {
+    return <TaskCard task={result} />;
+  }
+
   if (tool === 'web_search') {
     const count = isObject(result) && Array.isArray(result['results'])
       ? result['results'].length
@@ -63,6 +67,56 @@ export function WorkingPanel({ tool, result, defaultOpen = false }: WorkingPanel
       </div>
     </details>
   );
+}
+
+function TaskCard({ task }: { task: Record<string, unknown> }) {
+  const rows = [
+    ['Assigned team', task['assigned_to_team']],
+    ['Recurrence', task['recurrence_type']],
+    ['Next due', formatDate(task['next_run_at'] ?? task['due_date'])],
+    ['Category', task['category']],
+  ].filter((row): row is [string, string] => typeof row[1] === 'string' && row[1].length > 0);
+  return (
+    <section className="rounded-xl border border-primary-200 bg-primary-50/60 p-3.5 dark:border-primary-800 dark:bg-primary-950/25">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-primary-700 dark:text-primary-300">
+            PetroBrain task
+          </p>
+          <h4 className="mt-1 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+            {String(task['title'] ?? 'Compliance task')}
+          </h4>
+        </div>
+        <span className="rounded-full bg-white px-2 py-1 text-[10px] font-semibold uppercase text-primary-700 shadow-sm dark:bg-neutral-900 dark:text-primary-300">
+          {String(task['status'] ?? 'active')}
+        </span>
+      </div>
+      {rows.length > 0 ? (
+        <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
+          {rows.map(([label, value]) => (
+            <div key={label}>
+              <dt className="text-neutral-500 dark:text-neutral-400">{label}</dt>
+              <dd className="font-medium capitalize text-neutral-800 dark:text-neutral-200">
+                {value.replace(/_/g, ' ')}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+      <p className="mt-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+        Saved in PetroBrain. External email and calendar delivery is not enabled.
+      </p>
+      <a href="/tasks" className="mt-3 inline-flex text-xs font-semibold text-primary-700 hover:underline dark:text-primary-300">
+        View task
+      </a>
+    </section>
+  );
+}
+
+function formatDate(value: unknown): string | null {
+  if (typeof value !== 'string' || !value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
 function HeadlineNumbers({ result }: { result: unknown }) {
@@ -122,6 +176,8 @@ export function userSafeToolLabel(tool: string): string {
     combustion_emissions: 'Calculated combustion emissions',
     reconcile_flaring: 'Reconciled flaring data',
     model_abatement: 'Modeled abatement options',
+    create_task: 'Created PetroBrain task',
+    query_audit: 'Retrieved audit trail',
   };
   return labels[tool] ?? 'Checked supporting information';
 }

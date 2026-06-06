@@ -13,6 +13,8 @@ VALID_MODULES = {
     "emissions_mrv",
     "ptw",
     "documents",
+    "tasks",
+    "audit",
 }
 
 _INSTRUCTION_BLOCK = re.compile(
@@ -22,6 +24,29 @@ _INSTRUCTION_BLOCK = re.compile(
 _SPACE = re.compile(r"\s+")
 
 _PATTERNS: tuple[tuple[str, tuple[re.Pattern[str], ...]], ...] = (
+    (
+        "audit",
+        tuple(
+            re.compile(pattern)
+            for pattern in (
+                r"\baudit\s+trail\b",
+                r"\b(?:admin|audit)\s+logs?\b",
+                r"\b(?:bypass\s+attempts?|safety\s+flags|sources\s+used|tool\s+calls)\b",
+            )
+        ),
+    ),
+    (
+        "tasks",
+        tuple(
+            re.compile(pattern)
+            for pattern in (
+                r"\b(?:remind|reminder|schedule|recurring)\b",
+                r"\bcreate\b.{0,35}\btask\b",
+                r"\b(?:weekly|monthly|quarterly|yearly)\b.{0,40}\b(?:task|reminder|digest|report)\b",
+                r"\bcompliance\s+calendar\b",
+            )
+        ),
+    ),
     (
         "well_control",
         tuple(
@@ -102,6 +127,8 @@ _LABELS = {
     "emissions_mrv": "Emissions / MRV",
     "ptw": "PTW",
     "documents": "Documents",
+    "tasks": "Tasks",
+    "audit": "Audit",
 }
 
 _REASONS = {
@@ -110,6 +137,8 @@ _REASONS = {
     "emissions_mrv": "This request concerns emissions quantification or MRV.",
     "ptw": "This request concerns permit-to-work hazards, controls, or authorization.",
     "documents": "This request asks PetroBrain to analyze attached or uploaded documents.",
+    "tasks": "This request creates or manages a compliance or operations task.",
+    "audit": "This request queries the tenant audit trail.",
     "general": "No specialist workflow was clearly required.",
 }
 

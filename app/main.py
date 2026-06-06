@@ -15,6 +15,7 @@ from app.api import (
     routes_admin_documents,
     routes_admin_feedback,
     routes_admin_memory,
+    routes_admin_notifications,
     routes_admin_permits,
     routes_admin_tenants,
     routes_admin_users,
@@ -27,6 +28,7 @@ from app.api import (
     routes_emissions,
     routes_errors,
     routes_research,
+    routes_tasks,
     routes_wellcontrol,
 )
 from app.config import get_settings, validate_production_settings
@@ -96,6 +98,7 @@ app.include_router(routes_documents.router)
 app.include_router(routes_documents.docs_router)
 app.include_router(routes_admin_documents.router)
 app.include_router(routes_admin_audit.router)
+app.include_router(routes_admin_notifications.router)
 app.include_router(routes_assets.router)
 app.include_router(routes_calc.router)
 app.include_router(routes_admin_tenants.router)
@@ -108,6 +111,8 @@ app.include_router(routes_admin_chunk_weights.router)
 app.include_router(routes_errors.report_router)
 app.include_router(routes_errors.admin_router)
 app.include_router(routes_research.router)
+app.include_router(routes_tasks.router)
+app.include_router(routes_tasks.admin_router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 

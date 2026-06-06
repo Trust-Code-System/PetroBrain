@@ -23,6 +23,7 @@ from app.api import deps, routes_admin_audit, routes_chat
 from app.core.audit_hash import sha256_canonical
 from app.core.llm_service import LLMResponse
 from app.db.audit_events_repository import LocalJsonAuditEventsRepository
+from app.db.notifications_repository import LocalJsonNotificationsRepository
 from app.main import app
 from tests.auth_helpers import auth_headers, jwt_settings
 
@@ -78,6 +79,11 @@ def wire(monkeypatch, events_repo):
     monkeypatch.setattr(deps, "get_settings", jwt_settings)
     monkeypatch.setattr(routes_chat, "_events_repository", lambda: events_repo)
     monkeypatch.setattr(routes_admin_audit, "_repository", lambda: events_repo)
+    monkeypatch.setattr(
+        routes_chat,
+        "_notifications_repository",
+        lambda: LocalJsonNotificationsRepository(events_repo.path.with_name("notifications.jsonl")),
+    )
 
 
 def _admin_headers(**overrides):
@@ -102,13 +108,13 @@ def test_chat_writes_single_hash_only_audit_event(events_repo):
     rows = events_repo.query(tenant_id="tenant-a", limit=100)
     assert len(rows) == 1
     row = rows[0]
-    assert row["action"] == "chat"
+    assert row["action"] == "bypass_attempt"
     assert row["module"] == "general"
     assert row["user_id"] == "alice"
     assert row["role"] == "engineer"
     assert len(row["request_hash"]) == 64
     assert len(row["response_hash"]) == 64
-    assert row["flags"] == ["safety_bypass"]
+    assert row["flags"] == ["safety_bypass", "critical_safety_system_bypass"]
 
     # PII / raw text never lands in the store.
     raw = events_repo.path.read_text(encoding="utf-8")

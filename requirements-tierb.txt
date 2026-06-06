@@ -17,6 +17,7 @@ psycopg[binary,pool]==3.3.4
 redis==7.4.0
 httpx==0.28.1
 pytest==9.0.3
+pytest-asyncio==1.4.0
 PyJWT==2.13.0
 sentence-transformers==5.5.1
 celery==5.5.3

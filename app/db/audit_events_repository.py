@@ -105,6 +105,8 @@ class LocalJsonAuditEventsRepository:
         user_id: str | None = None,
         module: str | None = None,
         action: str | None = None,
+        risk_level: str | None = None,
+        status: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
@@ -127,8 +129,21 @@ class LocalJsonAuditEventsRepository:
             rows = [r for r in rows if r.get("module") == module]
         if action:
             rows = [r for r in rows if r.get("action") == action]
+        if risk_level:
+            rows = [r for r in rows if (r.get("usage") or {}).get("risk_level") == risk_level]
+        if status:
+            rows = [r for r in rows if (r.get("usage") or {}).get("status") == status]
         rows.sort(key=lambda r: (r["ts"], r["id"]), reverse=True)
         return rows[offset:offset + limit]
+
+    def get(self, *, tenant_id: str, audit_id: str) -> dict[str, Any] | None:
+        return next(
+            (
+                row for row in self._read_all()
+                if row.get("tenant_id") == tenant_id and str(row.get("id")) == str(audit_id)
+            ),
+            None,
+        )
 
     def count(self, *, tenant_id: str) -> int:
         if not tenant_id:
@@ -210,7 +225,8 @@ class PostgresAuditEventsRepository:
         self, *, tenant_id: str,
         from_ts: datetime | None = None, to_ts: datetime | None = None,
         user_id: str | None = None, module: str | None = None,
-        action: str | None = None, limit: int = 50, offset: int = 0,
+        action: str | None = None, risk_level: str | None = None,
+        status: str | None = None, limit: int = 50, offset: int = 0,
     ) -> list[dict[str, Any]]:
         if not tenant_id:
             raise ValueError("tenant_id is required for audit_events.query")
@@ -235,6 +251,12 @@ class PostgresAuditEventsRepository:
         if action:
             clauses.append("action = %s")
             params.append(action)
+        if risk_level:
+            clauses.append("usage ->> 'risk_level' = %s")
+            params.append(risk_level)
+        if status:
+            clauses.append("usage ->> 'status' = %s")
+            params.append(status)
         sql = (
             f"SELECT {_AUDIT_COLUMNS} FROM audit_events WHERE {' AND '.join(clauses)} "
             f"ORDER BY ts DESC, id DESC LIMIT %s OFFSET %s"
@@ -243,6 +265,15 @@ class PostgresAuditEventsRepository:
         with self._tenant_conn(tenant_id) as conn:
             rows = conn.execute(sql, params).fetchall()
         return [_serialize_event(r) for r in rows]
+
+    def get(self, *, tenant_id: str, audit_id: str) -> dict[str, Any] | None:
+        with self._tenant_conn(tenant_id) as conn:
+            row = conn.execute(
+                f"SELECT {_AUDIT_COLUMNS} FROM audit_events "
+                f"WHERE tenant_id = %s AND id::text = %s",
+                (tenant_id, str(audit_id)),
+            ).fetchone()
+        return _serialize_event(row) if row else None
 
     def count(self, *, tenant_id: str) -> int:
         if not tenant_id:

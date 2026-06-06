@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from typing import Any
-from datetime import date
+from datetime import date, datetime
 from pydantic import BaseModel, Field
 
 
@@ -36,6 +36,8 @@ class ChatRequest(BaseModel):
     auto_route_enabled: bool = True
     module_pinned: bool = False
     conversation_context: list[dict[str, Any]] = Field(default_factory=list)
+    conversation_id: str | None = None
+    session_id: str | None = None
     user_role: str | None = None
     jurisdiction: str | None = None
     asset_context: str | None = None
@@ -263,3 +265,64 @@ class AdminDocumentStatusResponse(BaseModel):
     failure_reason: str | None = None
     created_utc: str
     updated_utc: str
+
+
+class TaskCreate(BaseModel):
+    title: str = Field(min_length=3, max_length=240)
+    description: str = Field(default="", max_length=4000)
+    category: str
+    priority: str = "medium"
+    assigned_to_user_ids: list[str] = Field(default_factory=list)
+    assigned_to_team: str | None = None
+    recurrence_type: str = "none"
+    recurrence_rule: dict[str, Any] = Field(default_factory=dict)
+    start_date: datetime | None = None
+    due_date: datetime | None = None
+    timezone: str = "Africa/Lagos"
+    reminder_channels: list[str] = Field(default_factory=lambda: ["in_app"])
+    related_module: str | None = None
+    related_asset_id: str | None = None
+    related_project_id: str | None = None
+    related_document_id: str | None = None
+    safety_critical: bool = False
+    compliance_critical: bool = False
+    digest_config: dict[str, Any] | None = None
+
+
+class TaskUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=3, max_length=240)
+    description: str | None = Field(default=None, max_length=4000)
+    category: str | None = None
+    priority: str | None = None
+    status: str | None = None
+    assigned_to_user_ids: list[str] | None = None
+    assigned_to_team: str | None = None
+    recurrence_type: str | None = None
+    recurrence_rule: dict[str, Any] | None = None
+    start_date: datetime | None = None
+    due_date: datetime | None = None
+    timezone: str | None = None
+    reminder_channels: list[str] | None = None
+    related_module: str | None = None
+    related_asset_id: str | None = None
+    related_project_id: str | None = None
+    related_document_id: str | None = None
+    safety_critical: bool | None = None
+    compliance_critical: bool | None = None
+
+
+class NotificationUpdate(BaseModel):
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class AuditExportRequest(BaseModel):
+    tenant_id: str | None = None
+    format: str = "json"
+    from_: datetime | None = Field(default=None, alias="from")
+    to: datetime | None = None
+    user_id: str | None = None
+    module: str | None = None
+    action: str | None = None
+    risk_level: str | None = None
+
+    model_config = {"populate_by_name": True}

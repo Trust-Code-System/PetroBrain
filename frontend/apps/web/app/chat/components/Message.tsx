@@ -128,6 +128,8 @@ function moduleLabel(module: Extract<MessageType, { role: 'user' }>['module']): 
     emissions_mrv: 'Emissions / MRV',
     ptw: 'PTW',
     documents: 'Documents',
+    tasks: 'Tasks',
+    audit: 'Audit',
   }[module];
 }
 

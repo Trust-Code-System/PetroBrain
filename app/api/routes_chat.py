@@ -11,6 +11,7 @@ import structlog
 from app.api.deps import Principal, get_principal
 from app.core.audit import AuditEvent, get_audit_logger
 from app.core.audit_hash import sha256_canonical
+from app.core.guardrails import detect_safety_event
 from app.core.observability import increment_token_cost_counters, record_chat_turn
 from app.core.orchestrator import Orchestrator, Turn
 from app.core.progress import normalize_stream_data
@@ -19,6 +20,10 @@ from app.core import turn_attribution
 from app.core.chunk_weight_updater import update_weights_from_feedback
 from app.db.audit_events_repository import get_audit_events_repository
 from app.db.feedback_repository import VALID_RATINGS, get_feedback_repository
+from app.db.notifications_repository import get_notifications_repository
+from app.core.task_service import is_audit_request, is_task_request, parse_task_request
+from app.api.routes_tasks import create_task_for_chat
+from app.config import get_settings
 from app.models.schemas import (
     ChatRequest,
     ChatResponse,
@@ -39,6 +44,16 @@ async def chat(
     stream: bool = Query(default=False),
     who: Principal = Depends(get_principal),
 ):
+    safety_event = detect_safety_event(req.message)
+    if safety_event is not None:
+        _escalate_safety_event(req=req, who=who, safety_event=safety_event)
+
+    command_turn = None
+    if safety_event is None and is_task_request(req.message):
+        command_turn = _task_command_turn(req, who)
+    elif safety_event is None and is_audit_request(req.message):
+        command_turn = _audit_command_turn(req, who)
+
     routing = module_router.route(
         user_message=req.message,
         selected_module=req.requested_module or req.module,
@@ -52,6 +67,33 @@ async def chat(
         update={"module": routing.selected_module_for_this_turn}
     )
     turn_id = str(uuid4())
+    if command_turn is not None:
+        if stream:
+            return StreamingResponse(
+                _stream_prebuilt_turn(
+                    req=req, who=who, turn_id=turn_id,
+                    routing=routing, turn=command_turn,
+                ),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+        _finalize_chat_turn(
+            req=req, turn=command_turn, who=who, latency_seconds=0, turn_id=turn_id,
+        )
+        return ChatResponse(
+            answer=command_turn.answer,
+            tool_results=command_turn.tool_results,
+            flags=command_turn.flags,
+            citations=command_turn.citations,
+            evidence_pack=command_turn.evidence_pack,
+            turn_id=turn_id,
+            requested_module=routing.requested_module,
+            resolved_module=routing.selected_module_for_this_turn,
+            routing_confidence=routing.routing_confidence,
+            routing_reason=routing.reason,
+            user_visible_notice=routing.user_visible_notice,
+            routing_safety_flags=routing.safety_flags,
+        )
     if stream:
         return StreamingResponse(
             _stream_chat(req=req, who=who, turn_id=turn_id, routing=routing),
@@ -161,6 +203,158 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, sort_keys=True)}\n\n"
 
 
+async def _stream_prebuilt_turn(
+    *, req: ChatRequest, who: Principal, turn_id: str,
+    routing: ModuleRouteDecision, turn: Turn,
+):
+    yield _sse("routing", normalize_stream_data("routing", {
+        **routing.as_dict(),
+        "step_id": "routing",
+        "status": "completed",
+        "message": routing.user_visible_notice or routing.reason,
+    }))
+    yield _sse("status", normalize_stream_data("status", {
+        "step_id": "command",
+        "status": "running",
+        "message": "Saving the PetroBrain task..." if turn.tool_results else "Checking the audit trail...",
+    }))
+    for tool_result in turn.tool_results:
+        yield _sse("tool_result", normalize_stream_data("tool_result", tool_result))
+    yield _sse("token", normalize_stream_data("token", {"text": turn.answer}))
+    yield _sse("final", normalize_stream_data("final", {
+        "answer": turn.answer, "status": "completed", "message": "Response prepared.",
+    }))
+    done = normalize_stream_data("done", {
+        "answer": turn.answer,
+        "tool_results": turn.tool_results,
+        "flags": turn.flags,
+        "audit": turn.audit,
+        "evidence_pack": turn.evidence_pack,
+        "turn_id": turn_id,
+        **routing.as_dict(),
+    })
+    yield _sse("done", done)
+    _finalize_chat_turn(
+        req=req, turn=turn, who=who, latency_seconds=0, turn_id=turn_id,
+    )
+
+
+def _task_command_turn(req: ChatRequest, who: Principal) -> Turn:
+    parsed = parse_task_request(
+        req.message, timezone_name=get_settings().task_default_timezone
+    )
+    if not parsed.create:
+        missing = ", ".join(parsed.missing)
+        return Turn(
+            answer=f"I can create that PetroBrain task. Please provide the missing {missing}.",
+            audit={"command": "task_create", "status": "needs_input"},
+        )
+    task = create_task_for_chat(parsed.data, who)
+    recurrence = task["recurrence_type"].replace("_", " ")
+    team = task.get("assigned_to_team") or "you"
+    answer = (
+        f"Done. I created a {recurrence} reminder for {team} to "
+        f"{task['title'].rstrip('.')}. The task is saved in PetroBrain. "
+        "External email/calendar notification is not enabled yet."
+    )
+    return Turn(
+        answer=answer,
+        tool_results=[{"tool": "create_task", "input": {"request": req.message}, "result": task}],
+        audit={"command": "task_create", "task_id": task["task_id"]},
+    )
+
+
+def _audit_command_turn(req: ChatRequest, who: Principal) -> Turn:
+    if who.role not in {"admin", "platform_admin"}:
+        return Turn(
+            answer=(
+                "Audit trails are restricted to tenant administrators and platform "
+                "administrators. Your request was not authorized."
+            ),
+            flags=["rbac_denied"],
+            audit={"command": "audit_query", "status": "refused"},
+        )
+    rows = _events_repository().query(
+        tenant_id=who.tenant_id,
+        module="research" if "research" in req.message.lower() else None,
+        limit=10,
+    )
+    if not rows:
+        return Turn(
+            answer="No matching audit trail was found for this tenant.",
+            audit={"command": "audit_query", "status": "not_found"},
+        )
+    latest = rows[0]
+    usage = latest.get("usage") or {}
+    answer = (
+        "Here is the latest matching audit event:\n\n"
+        f"- Audit ID: {latest['id']}\n"
+        f"- User: {latest['user_id']}\n"
+        f"- Tenant: {latest['tenant_id']}\n"
+        f"- Role: {latest['role']}\n"
+        f"- Timestamp: {latest['ts']}\n"
+        f"- Module: {latest['module']}\n"
+        f"- Action: {latest['action']}\n"
+        f"- Safety flags: {', '.join(latest.get('flags') or []) or 'None'}\n"
+        f"- Sources/tool metadata: {json.dumps(usage.get('metadata') or {}, sort_keys=True)}"
+    )
+    return Turn(
+        answer=answer,
+        tool_results=[{"tool": "query_audit", "input": {"limit": 10}, "result": {"events": rows}}],
+        audit={"command": "audit_query", "audit_id": latest["id"]},
+    )
+
+
+def _escalate_safety_event(*, req: ChatRequest, who: Principal, safety_event) -> None:
+    settings = get_settings()
+    usage = {
+        "risk_level": safety_event.severity,
+        "status": "escalated",
+        "action_summary": "Unsafe request refused and escalated",
+        "triggered_rule": safety_event.rule,
+        "conversation_id": req.conversation_id,
+        "session_id": req.session_id,
+        "recommended_admin_action": "Review the request and confirm site/compliance follow-up.",
+        "prompt_excerpt": req.message[:240] if settings.audit_store_prompt_text else None,
+        "prompt_storage": "excerpt" if settings.audit_store_prompt_text else "hash_only",
+    }
+    audit = _events_repository().append(
+        tenant_id=who.tenant_id,
+        user_id=who.user_id,
+        role=who.role,
+        action="bypass_attempt",
+        module=req.requested_module or req.module,
+        request_hash=sha256_canonical({"message": req.message}),
+        response_hash=sha256_canonical({"refused": True, "rule": safety_event.rule}),
+        flags=["safety_bypass", safety_event.rule],
+        usage=usage,
+    )
+    try:
+        from app.db.users_repository import get_users_repository
+        user = get_users_repository().get(tenant_id=who.tenant_id, user_id=who.user_id)
+    except Exception:  # noqa: BLE001
+        user = None
+    _notifications_repository().create(
+        tenant_id=who.tenant_id,
+        user_id=who.user_id,
+        user_name=(user or {}).get("email"),
+        user_role=who.role,
+        title=f"{safety_event.severity.upper()} SAFETY BYPASS ATTEMPT",
+        message="Unsafe request refused and logged for administrator review.",
+        category=safety_event.category,
+        severity=safety_event.severity,
+        related_audit_id=str(audit.id),
+        related_conversation_id=req.conversation_id,
+        related_module=req.requested_module or req.module,
+        triggered_rule=safety_event.rule,
+        metadata={
+            "action_taken": "Refused and logged",
+            "prompt_hash": audit.request_hash,
+            "prompt_excerpt": usage["prompt_excerpt"],
+        },
+    )
+
+
 def _finalize_chat_turn(*, req: ChatRequest, turn: Turn, who: Principal,
                         latency_seconds: float, turn_id: str) -> None:
     audit_logger.write(AuditEvent(
@@ -241,6 +435,8 @@ def _record_audit_events(*, req: ChatRequest, turn, who: Principal) -> None:
     Only HASHES of the request and response payloads reach this store -
     raw user text and raw model output stay out, per A6 / engineering spec.
     """
+    if "safety_bypass" in (turn.flags or []):
+        return
     repo = _events_repository()
     chat_request_hash = sha256_canonical({
         "message": req.message,
@@ -286,6 +482,10 @@ def _record_audit_events(*, req: ChatRequest, turn, who: Principal) -> None:
 
 def _events_repository():
     return get_audit_events_repository()
+
+
+def _notifications_repository():
+    return get_notifications_repository()
 
 
 @router.post("/feedback", response_model=FeedbackResponse)

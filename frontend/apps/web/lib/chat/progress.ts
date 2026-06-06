@@ -55,6 +55,16 @@ const MODE_STEPS: Record<Module, Array<[string, string]>> = {
     ['synthesis', 'Preparing document findings'],
     ['finalize', 'Finalizing response'],
   ],
+  tasks: [
+    ['understand', 'Understanding the task request'],
+    ['command', 'Saving the PetroBrain task'],
+    ['finalize', 'Preparing task confirmation'],
+  ],
+  audit: [
+    ['understand', 'Understanding the audit request'],
+    ['command', 'Checking the tenant audit trail'],
+    ['finalize', 'Preparing audit summary'],
+  ],
 };
 
 export function initialWorkingSteps(module: Module): WorkingStep[] {

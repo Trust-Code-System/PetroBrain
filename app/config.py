@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     document_store_path: str = "data/document_chunks.jsonl"
     admin_document_store_path: str = "data/admin_documents.jsonl"
     audit_events_store_path: str = "data/audit_events.jsonl"
+    audit_store_prompt_text: bool = False
     assets_store_path: str = "data/assets.jsonl"
     asset_relationships_store_path: str = "data/asset_relationships.jsonl"
     tenants_store_path: str = "data/tenants.jsonl"
@@ -73,6 +74,10 @@ class Settings(BaseSettings):
     feedback_store_path: str = "data/feedback_events.jsonl"
     tenant_memory_store_path: str = "data/tenant_memories.jsonl"
     research_store_path: str = "data/research_runs.jsonl"
+    tasks_store_path: str = "data/tasks.jsonl"
+    scheduled_digests_store_path: str = "data/scheduled_digests.jsonl"
+    admin_notifications_store_path: str = "data/admin_notifications.jsonl"
+    task_default_timezone: str = "Africa/Lagos"
     # Hard ceiling on memories injected into a single chat turn. Past this we
     # silently drop the oldest active rows from the prompt - the row still
     # exists in the DB, the admin should archive deliberately.

@@ -18,13 +18,14 @@ import type { Message, MessageAttachment } from '@/lib/chat/types';
 // Routes shown in the persistent left rail. Internal admin tooling is kept
 // off this user-facing navigation.
 const NAV: {
-  href: '/chat' | '/research' | '/projects' | '/customize' | '/emissions' | '/admin/documents';
+  href: '/chat' | '/research' | '/projects' | '/tasks' | '/customize' | '/emissions' | '/admin/documents';
   label: string;
-  icon: 'chat' | 'research' | 'project' | 'customize' | 'leaf' | 'doc';
+  icon: 'chat' | 'research' | 'project' | 'task' | 'customize' | 'leaf' | 'doc';
 }[] = [
   { href: '/chat', label: 'Chat', icon: 'chat' },
   { href: '/research', label: 'Research', icon: 'research' },
   { href: '/projects', label: 'Projects', icon: 'project' },
+  { href: '/tasks', label: 'Tasks', icon: 'task' },
   { href: '/customize', label: 'Customize', icon: 'customize' },
   { href: '/emissions', label: 'Emissions MRV', icon: 'leaf' },
   { href: '/admin/documents', label: 'Documents', icon: 'doc' },
@@ -33,7 +34,7 @@ const NAV: {
 function NavIcon({
   kind,
 }: {
-  kind: 'chat' | 'research' | 'project' | 'customize' | 'leaf' | 'doc';
+  kind: 'chat' | 'research' | 'project' | 'task' | 'customize' | 'leaf' | 'doc';
 }) {
   if (kind === 'chat') {
     return (
@@ -69,6 +70,14 @@ function NavIcon({
           strokeWidth="1.5"
           strokeLinejoin="round"
         />
+      </svg>
+    );
+  }
+  if (kind === 'task') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden>
+        <rect x="4" y="3" width="12" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M7 8l1.5 1.5L12 6M7 13h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
   }
@@ -1088,6 +1097,7 @@ export function ChatSidebar() {
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <AdminNotificationBell />
           <button
             type="button"
             onClick={() => setCollapsed(true)}
@@ -1157,6 +1167,52 @@ export function ChatSidebar() {
         </Button>
       )}
     </aside>
+  );
+}
+
+function AdminNotificationBell() {
+  const token = useChatStore((s) => s.token);
+  const principal = useChatStore((s) => s.principal);
+  const baseUrl = useChatStore((s) => s.apiBaseUrl);
+  const [count, setCount] = useState(0);
+  const isAdmin = principal?.role === 'admin' || principal?.role === 'platform_admin';
+
+  useEffect(() => {
+    if (!token || !isAdmin) return;
+    let active = true;
+    async function refresh() {
+      try {
+        const response = await fetch(`${baseUrl}/admin/notifications/unread`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) return;
+        const body = await response.json() as { count?: number };
+        if (active) setCount(body.count ?? 0);
+      } catch {
+        // Notification polling must never disrupt chat.
+      }
+    }
+    void refresh();
+    const timer = window.setInterval(refresh, 8_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [baseUrl, isAdmin, token]);
+
+  if (!isAdmin) return null;
+  return (
+    <a
+      href="/admin/notifications"
+      aria-label={`${count} unread admin notifications`}
+      title="Admin notifications"
+      className="relative flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200/70 bg-white/80 text-neutral-500 hover:border-primary-300 hover:text-primary-700 dark:border-neutral-800/70 dark:bg-neutral-900/70 dark:text-neutral-400"
+    >
+      <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden>
+        <path d="M5 14h10l-1.5-2V8a3.5 3.5 0 00-7 0v4L5 14zM8.5 16h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      {count > 0 ? <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-red-600 px-1 text-center text-[9px] font-bold leading-4 text-white">{count > 99 ? '99+' : count}</span> : null}
+    </a>
   );
 }
 
