@@ -94,3 +94,24 @@ def test_role_mismatch_is_rejected():
 
     assert exc.value.status_code == 403
     assert exc.value.detail == "role not allowed for principal"
+
+
+def test_current_principal_returns_authoritative_role_and_tenant():
+    response = client.get(
+        "/auth/me",
+        headers=auth_headers(
+            tenant_id="tenant-a",
+            user_id="u-rbac",
+            role="hse_manager",
+            allowed_assets=["Asset-A"],
+        ),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "user_id": "u-rbac",
+        "tenant_id": "tenant-a",
+        "role": "hse_manager",
+        "allowed_assets": ["Asset-A"],
+        "email": None,
+    }

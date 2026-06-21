@@ -93,6 +93,16 @@ class AuthResponse(BaseModel):
     onboarding_required: bool = False
 
 
+class CurrentPrincipal(BaseModel):
+    """Authoritative identity resolved from the verified bearer token."""
+
+    user_id: str
+    tenant_id: str
+    role: str
+    allowed_assets: list[str]
+    email: str | None = None
+
+
 def _safe_delete_tenant(repo, tenant_id: str) -> None:
     """Best-effort teardown of a tenant we just created when the rest of signup
     fails - keeps a failed signup from leaving an orphaned empty workspace
@@ -110,6 +120,24 @@ def _to_principal_payload(record: dict) -> AuthPrincipal:
         role=record["role"],
         email=record["email"],
         allowed_assets=list(record.get("allowed_assets") or []),
+    )
+
+
+@router.get("/me", response_model=CurrentPrincipal)
+async def current_principal(who: Principal = Depends(get_principal)) -> CurrentPrincipal:
+    """Return the backend-resolved tenant, role and asset scope for the current user.
+
+    Neon Auth sessions do not reliably expose PetroBrain's tenant role to the Next.js
+    application. This endpoint keeps the verified backend principal authoritative so the
+    frontend can mirror permissions without decoding or trusting client-controlled claims.
+    """
+    record = get_users_repository().get(tenant_id=who.tenant_id, user_id=who.user_id)
+    return CurrentPrincipal(
+        user_id=who.user_id,
+        tenant_id=who.tenant_id,
+        role=who.role,
+        allowed_assets=list(who.allowed_assets),
+        email=record.get("email") if record else None,
     )
 
 
