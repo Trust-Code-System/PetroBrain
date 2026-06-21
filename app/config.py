@@ -75,6 +75,8 @@ class Settings(BaseSettings):
     conversation_shares_store_path: str = "data/conversation_shares.jsonl"
     feedback_store_path: str = "data/feedback_events.jsonl"
     tenant_memory_store_path: str = "data/tenant_memories.jsonl"
+    user_settings_store_path: str = "data/user_settings.jsonl"
+    org_settings_store_path: str = "data/org_settings.jsonl"
     research_store_path: str = "data/research_runs.jsonl"
     tasks_store_path: str = "data/tasks.jsonl"
     scheduled_digests_store_path: str = "data/scheduled_digests.jsonl"

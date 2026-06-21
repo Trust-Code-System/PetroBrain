@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import (
+    routes_account,
     routes_admin_audit,
     routes_admin_chunk_weights,
     routes_admin_data_readiness,
@@ -118,6 +119,7 @@ app.include_router(routes_onboarding.invitations_router)
 app.include_router(routes_onboarding.company_admin_router)
 app.include_router(routes_tasks.router)
 app.include_router(routes_tasks.admin_router)
+app.include_router(routes_account.router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
