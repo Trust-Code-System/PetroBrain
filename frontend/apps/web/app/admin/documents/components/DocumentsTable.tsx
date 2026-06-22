@@ -1,17 +1,37 @@
 'use client';
 
-import type { AdminDocumentRow } from '@/lib/admin-documents/types';
+import { Button } from '@petrobrain/ui';
+
+import type { AdminDocumentRow, DocumentStatus } from '@/lib/admin-documents/types';
 
 import { StatusBadge } from './StatusBadge';
+
+/** Only stranded ingests can be re-dispatched; the backend rejects the rest. */
+const REQUEUEABLE: ReadonlySet<DocumentStatus> = new Set(['queued', 'failed']);
+
+function canRequeue(row: AdminDocumentRow): boolean {
+  return REQUEUEABLE.has(row.status) && !row.ingest_id.startsWith('optimistic-');
+}
 
 export interface DocumentsTableProps {
   rows: AdminDocumentRow[];
   isLoading: boolean;
   isError: boolean;
   emptyState?: React.ReactNode;
+  /** When provided, requeueable rows show a "Requeue" action. */
+  onRequeue?: (ingestId: string) => void;
+  /** ingest_id currently being re-dispatched, for the per-row spinner. */
+  requeuingId?: string | null;
 }
 
-export function DocumentsTable({ rows, isLoading, isError, emptyState }: DocumentsTableProps) {
+export function DocumentsTable({
+  rows,
+  isLoading,
+  isError,
+  emptyState,
+  onRequeue,
+  requeuingId,
+}: DocumentsTableProps) {
   if (isError) {
     return (
       <p role="alert" className="rounded-md border border-danger-border bg-danger-bg p-3 text-sm text-danger-fg dark:border-danger-border/40 dark:bg-danger-fg/20 dark:text-danger-bg">
@@ -38,6 +58,7 @@ export function DocumentsTable({ rows, isLoading, isError, emptyState }: Documen
             <th scope="col" className="px-3 py-2 text-left">Status</th>
             <th scope="col" className="px-3 py-2 text-left">Chunks</th>
             <th scope="col" className="px-3 py-2 text-left">Updated</th>
+            {onRequeue ? <th scope="col" className="px-3 py-2 text-right">Actions</th> : null}
           </tr>
         </thead>
         <tbody className="divide-y divide-neutral-100 bg-white dark:divide-neutral-800 dark:bg-neutral-900/60">
@@ -62,6 +83,21 @@ export function DocumentsTable({ rows, isLoading, isError, emptyState }: Documen
               <td className="px-3 py-2 text-xs text-neutral-500 dark:text-neutral-400">
                 {formatRelative(row.updated_utc)}
               </td>
+              {onRequeue ? (
+                <td className="px-3 py-2 text-right">
+                  {canRequeue(row) ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      loading={requeuingId === row.ingest_id}
+                      disabled={Boolean(requeuingId) && requeuingId !== row.ingest_id}
+                      onClick={() => onRequeue(row.ingest_id)}
+                    >
+                      Requeue
+                    </Button>
+                  ) : null}
+                </td>
+              ) : null}
             </tr>
           ))}
         </tbody>

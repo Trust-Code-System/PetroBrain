@@ -99,7 +99,17 @@ async def upload_document(
         ingest_id=ingest_id,
     )
 
-    ingest_document_task.delay(who.tenant_id, record.ingest_id)
+    try:
+        _dispatch_ingest(repo, tenant_id=who.tenant_id, ingest_id=record.ingest_id)
+    except Exception as exc:  # noqa: BLE001 - broker/dispatch failure
+        _audit_admin_doc(
+            "admin_document_upload_error", who, record.ingest_id, metadata_dict, filename,
+            error={"status_code": 503, "detail": f"dispatch: {exc}"},
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="ingestion dispatch failed; document marked failed (retry once the worker/broker is reachable)",
+        ) from exc
 
     _audit_admin_doc(
         "admin_document_upload",
@@ -125,7 +135,107 @@ async def get_document(ingest_id: str, who: Principal = Depends(_admin_only)):
     return _to_status(record)
 
 
+# Statuses that can be re-dispatched. "extracting"/"embedding" are in-flight in
+# async mode (don't double-run); "done" is already indexed (re-upload to refresh).
+_REQUEUEABLE = {"queued", "failed"}
+
+
+@router.post("/requeue-stuck")
+async def requeue_stuck_documents(who: Principal = Depends(_admin_only)):
+    """Re-dispatch every requeueable (queued/failed) ingest for the tenant.
+
+    Repairs documents stranded by an earlier broker/worker misconfiguration. In
+    eager mode each runs the extract->embed pipeline inline, so this request may
+    take a while for large backlogs.
+    """
+    repo = _repository()
+    targets = [
+        r for r in repo.list_records(tenant_id=who.tenant_id)
+        if r.get("status") in _REQUEUEABLE
+    ]
+    results: list[dict[str, Any]] = []
+    for r in targets:
+        ingest_id = r["ingest_id"]
+        try:
+            _requeue_one(repo, who, ingest_id)
+            outcome = repo.get(tenant_id=who.tenant_id, ingest_id=ingest_id)
+            results.append({"ingest_id": ingest_id, "status": outcome["status"]})
+        except Exception as exc:  # noqa: BLE001 - report per-doc, keep going
+            results.append({"ingest_id": ingest_id, "status": "failed", "detail": f"dispatch: {exc}"})
+    return {"requeued": len(targets), "results": results}
+
+
+@router.post("/{ingest_id}/requeue")
+async def requeue_document(ingest_id: str, who: Principal = Depends(_admin_only)):
+    """Re-dispatch a single stuck ingest (queued or failed)."""
+    repo = _repository()
+    record = repo.get(tenant_id=who.tenant_id, ingest_id=ingest_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="admin document ingest not found")
+    status = record.get("status")
+    if status not in _REQUEUEABLE:
+        raise HTTPException(
+            status_code=409,
+            detail=f"cannot requeue a document in '{status}' state (only queued/failed)",
+        )
+    try:
+        _requeue_one(repo, who, ingest_id)
+    except Exception as exc:  # noqa: BLE001 - broker/dispatch failure
+        _audit_admin_doc(
+            "admin_document_requeue_error", who, ingest_id,
+            _metadata_from_record(record), record["filename"],
+            error={"status_code": 503, "detail": f"dispatch: {exc}"},
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="ingestion dispatch failed; document marked failed (retry once the worker/broker is reachable)",
+        ) from exc
+    return _to_status(repo.get(tenant_id=who.tenant_id, ingest_id=ingest_id))
+
+
 # ---- helpers -----------------------------------------------------------------
+
+def _dispatch_ingest(repo, *, tenant_id: str, ingest_id: str) -> None:
+    """Enqueue the ingestion task. In eager mode this runs the pipeline inline.
+
+    If dispatch raises (e.g. an empty/unreachable broker in async mode), mark the
+    record ``failed`` with the reason so it surfaces in the UI instead of sitting
+    in ``queued`` forever, then re-raise for the caller to translate to a 503.
+    """
+    try:
+        ingest_document_task.delay(tenant_id, ingest_id)
+    except Exception as exc:  # noqa: BLE001
+        try:
+            repo.update_status(
+                tenant_id=tenant_id,
+                ingest_id=ingest_id,
+                status="failed",
+                failure_reason=f"dispatch: {exc}",
+            )
+        except Exception:  # noqa: BLE001 - never mask the original dispatch error
+            pass
+        raise
+
+
+def _requeue_one(repo, who: Principal, ingest_id: str) -> None:
+    # Reset to queued so the status history records the fresh run, then dispatch.
+    repo.update_status(tenant_id=who.tenant_id, ingest_id=ingest_id, status="queued")
+    _dispatch_ingest(repo, tenant_id=who.tenant_id, ingest_id=ingest_id)
+    record = repo.get(tenant_id=who.tenant_id, ingest_id=ingest_id)
+    _audit_admin_doc(
+        "admin_document_requeue", who, ingest_id,
+        _metadata_from_record(record), record["filename"],
+        response={"ingest_id": ingest_id, "status": record["status"]},
+    )
+
+
+def _metadata_from_record(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "document_id": record.get("document_id"),
+        "title": record.get("title"),
+        "revision": record.get("revision"),
+        "asset": record.get("asset"),
+    }
 
 def _repository():
     return get_admin_document_repository()

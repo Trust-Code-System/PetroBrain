@@ -1,5 +1,5 @@
-import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 import { filterRows } from './DocumentsScreen';
 import { DocumentsTable } from './DocumentsTable';
@@ -79,6 +79,40 @@ describe('DocumentsTable', () => {
     const row = screen.getByTestId('row-ing-x');
     expect(within(row).getByText('failed')).toBeInTheDocument();
     expect(within(row).getByText('extract: encoding error')).toBeInTheDocument();
+  });
+
+  it('shows Requeue only for queued/failed rows and fires onRequeue with the ingest id', () => {
+    const onRequeue = vi.fn();
+    render(
+      <DocumentsTable
+        rows={[
+          makeRow({ ingest_id: 'ing-failed', status: 'failed' }),
+          makeRow({ ingest_id: 'ing-done', status: 'done' }),
+        ]}
+        isLoading={false}
+        isError={false}
+        onRequeue={onRequeue}
+      />,
+    );
+
+    const failedRow = screen.getByTestId('row-ing-failed');
+    const doneRow = screen.getByTestId('row-ing-done');
+    expect(within(failedRow).getByRole('button', { name: 'Requeue' })).toBeInTheDocument();
+    expect(within(doneRow).queryByRole('button', { name: 'Requeue' })).toBeNull();
+
+    fireEvent.click(within(failedRow).getByRole('button', { name: 'Requeue' }));
+    expect(onRequeue).toHaveBeenCalledWith('ing-failed');
+  });
+
+  it('does not render the Requeue action when no onRequeue handler is given', () => {
+    render(
+      <DocumentsTable
+        rows={[makeRow({ ingest_id: 'ing-q', status: 'queued' })]}
+        isLoading={false}
+        isError={false}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Requeue' })).toBeNull();
   });
 });
 

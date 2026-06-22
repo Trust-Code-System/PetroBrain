@@ -6,13 +6,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 
-import { BackLink, Badge } from '@petrobrain/ui';
+import { BackLink, Badge, Button } from '@petrobrain/ui';
 
 import { fetchAssets } from '@/lib/chat/assets';
 import { useChatStore } from '@/lib/chat/store';
 import {
   getAdminDocument,
   listAdminDocuments,
+  requeueAdminDocument,
+  requeueStuckAdminDocuments,
   uploadAdminDocument,
 } from '@/lib/admin-documents/api';
 import { POLL_INTERVAL_MS, shouldKeepPolling } from '@/lib/admin-documents/polling';
@@ -45,6 +47,7 @@ export function DocumentsScreen() {
   const queryClient = useQueryClient();
 
   const [pending, setPending] = useState<PendingUpload[]>([]);
+  const [requeuingId, setRequeuingId] = useState<string | null>(null);
   const [filters, setFilters] = useState<DocumentFilterState>({
     status: 'all',
     type: 'all',
@@ -108,9 +111,37 @@ export function DocumentsScreen() {
     },
   });
 
+  const requeueMutation = useMutation({
+    mutationFn: (ingestId: string) =>
+      requeueAdminDocument({ baseUrl: apiBaseUrl, token, ingestId }),
+    onMutate: (ingestId) => setRequeuingId(ingestId),
+    onSuccess: (row) => {
+      queryClient.setQueryData<AdminDocumentRow[]>(DOCUMENTS_QUERY_KEY, (old) =>
+        (old ?? []).map((r) => (r.ingest_id === row.ingest_id ? row : r)),
+      );
+    },
+    onSettled: () => {
+      setRequeuingId(null);
+      void queryClient.invalidateQueries({ queryKey: DOCUMENTS_QUERY_KEY });
+    },
+  });
+
+  const requeueStuckMutation = useMutation({
+    mutationFn: () => requeueStuckAdminDocuments({ baseUrl: apiBaseUrl, token }),
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: DOCUMENTS_QUERY_KEY }),
+  });
+
   const filteredRows = useMemo(
     () => filterRows(documentsQuery.data ?? [], filters),
     [documentsQuery.data, filters],
+  );
+
+  const stuckCount = useMemo(
+    () =>
+      (documentsQuery.data ?? []).filter(
+        (r) => (r.status === 'queued' || r.status === 'failed') && !r.ingest_id.startsWith('optimistic-'),
+      ).length,
+    [documentsQuery.data],
   );
 
   const assetOptions = useMemo(() => {
@@ -164,13 +195,27 @@ export function DocumentsScreen() {
       </section>
 
       <section className="space-y-3" aria-label="Documents">
-        <header className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
-            Documents - {filteredRows.length}
-          </h2>
-          {documentsQuery.isFetching ? <Badge tone="info">refreshing…</Badge> : null}
-          {shouldKeepPolling(documentsQuery.data ?? []) === POLL_INTERVAL_MS ? (
-            <Badge tone="info">polling every 5s</Badge>
+        <header className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
+              Documents - {filteredRows.length}
+            </h2>
+            {documentsQuery.isFetching ? <Badge tone="info">refreshing…</Badge> : null}
+            {shouldKeepPolling(documentsQuery.data ?? []) === POLL_INTERVAL_MS ? (
+              <Badge tone="info">polling every 5s</Badge>
+            ) : null}
+          </div>
+          {stuckCount > 0 ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={requeueStuckMutation.isPending}
+              disabled={Boolean(requeuingId)}
+              onClick={() => requeueStuckMutation.mutate()}
+              title="Re-dispatch every queued or failed document for this tenant"
+            >
+              Requeue stuck ({stuckCount})
+            </Button>
           ) : null}
         </header>
         <DocumentsTable
@@ -178,6 +223,8 @@ export function DocumentsScreen() {
           isLoading={documentsQuery.isLoading}
           isError={documentsQuery.isError}
           emptyState={'No documents match the current filters. Drop a file above to seed the index.'}
+          onRequeue={(ingestId) => requeueMutation.mutate(ingestId)}
+          requeuingId={requeuingId}
         />
       </section>
     </main>

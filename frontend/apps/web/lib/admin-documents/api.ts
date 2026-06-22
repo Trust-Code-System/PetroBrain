@@ -30,6 +30,43 @@ export async function getAdminDocument(opts: RequestOpts & { ingestId: string })
   return (await resp.json()) as AdminDocumentRow;
 }
 
+/**
+ * Re-dispatch a single stuck ingest (status ``queued`` or ``failed``). The
+ * backend re-pulls the already-persisted bytes and re-runs extract -> embed.
+ * Returns the updated row (in eager mode it reflects the terminal status).
+ */
+export async function requeueAdminDocument(
+  opts: RequestOpts & { ingestId: string },
+): Promise<AdminDocumentRow> {
+  const init: RequestInit = {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${opts.token}` },
+  };
+  if (opts.signal) init.signal = opts.signal;
+  const resp = await fetch(new URL(`/admin/documents/${opts.ingestId}/requeue`, opts.baseUrl), init);
+  if (!resp.ok) throw apiError(resp);
+  return (await resp.json()) as AdminDocumentRow;
+}
+
+export interface RequeueStuckResult {
+  requeued: number;
+  results: { ingest_id: string; status: string; detail?: string }[];
+}
+
+/** Bulk re-dispatch every ``queued``/``failed`` ingest for the tenant. */
+export async function requeueStuckAdminDocuments(
+  opts: RequestOpts,
+): Promise<RequeueStuckResult> {
+  const init: RequestInit = {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${opts.token}` },
+  };
+  if (opts.signal) init.signal = opts.signal;
+  const resp = await fetch(new URL('/admin/documents/requeue-stuck', opts.baseUrl), init);
+  if (!resp.ok) throw apiError(resp);
+  return (await resp.json()) as RequeueStuckResult;
+}
+
 export interface UploadOpts extends RequestOpts {
   file: File;
   metadata: AdminDocumentMetadata;
