@@ -104,6 +104,27 @@ def test_rls_blocks_cross_tenant_write(app_conn):
         _insert_asset(app_conn, "smuggled", "tenant-a")
 
 
+def test_rls_blocks_cross_tenant_update_delete(app_conn):
+    from app.db import pg
+
+    # tenant-a owns the row.
+    pg.set_tenant(app_conn, "tenant-a")
+    _insert_asset(app_conn, "asset-a", "tenant-a")
+
+    # tenant-b's UPDATE/DELETE see no rows to act on — RLS filters before the
+    # WHERE, so a cross-tenant write silently affects 0 rows rather than another
+    # tenant's data. (Complements the WITH CHECK insert proof above.)
+    pg.set_tenant(app_conn, "tenant-b")
+    assert app_conn.execute("UPDATE assets SET name = 'hacked'").rowcount == 0
+    assert app_conn.execute("DELETE FROM assets").rowcount == 0
+
+    # tenant-a's row is intact and unchanged.
+    pg.set_tenant(app_conn, "tenant-a")
+    assert [
+        (r[0], r[1]) for r in app_conn.execute("SELECT id, name FROM assets").fetchall()
+    ] == [("asset-a", "Niger-Delta")]
+
+
 def test_rls_hides_rows_when_tenant_unset(app_conn):
     from app.db import pg
 
