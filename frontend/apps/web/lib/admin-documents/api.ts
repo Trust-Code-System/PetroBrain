@@ -17,7 +17,7 @@ export async function listAdminDocuments(opts: RequestOpts): Promise<AdminDocume
   const init: RequestInit = { headers: { Authorization: `Bearer ${opts.token}` } };
   if (opts.signal) init.signal = opts.signal;
   const resp = await fetch(new URL('/admin/documents', opts.baseUrl), init);
-  if (!resp.ok) throw apiError(resp);
+  if (!resp.ok) throw await apiError(resp);
   const body = (await resp.json()) as { documents: AdminDocumentRow[] };
   return body.documents;
 }
@@ -26,7 +26,7 @@ export async function getAdminDocument(opts: RequestOpts & { ingestId: string })
   const init: RequestInit = { headers: { Authorization: `Bearer ${opts.token}` } };
   if (opts.signal) init.signal = opts.signal;
   const resp = await fetch(new URL(`/admin/documents/${opts.ingestId}`, opts.baseUrl), init);
-  if (!resp.ok) throw apiError(resp);
+  if (!resp.ok) throw await apiError(resp);
   return (await resp.json()) as AdminDocumentRow;
 }
 
@@ -44,7 +44,7 @@ export async function requeueAdminDocument(
   };
   if (opts.signal) init.signal = opts.signal;
   const resp = await fetch(new URL(`/admin/documents/${opts.ingestId}/requeue`, opts.baseUrl), init);
-  if (!resp.ok) throw apiError(resp);
+  if (!resp.ok) throw await apiError(resp);
   return (await resp.json()) as AdminDocumentRow;
 }
 
@@ -63,7 +63,7 @@ export async function requeueStuckAdminDocuments(
   };
   if (opts.signal) init.signal = opts.signal;
   const resp = await fetch(new URL('/admin/documents/requeue-stuck', opts.baseUrl), init);
-  if (!resp.ok) throw apiError(resp);
+  if (!resp.ok) throw await apiError(resp);
   return (await resp.json()) as RequeueStuckResult;
 }
 
@@ -91,11 +91,14 @@ export async function uploadAdminDocument(opts: UploadOpts): Promise<AdminDocume
   };
   if (opts.signal) init.signal = opts.signal;
   const resp = await fetch(new URL('/admin/documents', opts.baseUrl), init);
-  if (!resp.ok) throw apiError(resp);
+  if (!resp.ok) throw await apiError(resp);
   return (await resp.json()) as AdminDocumentRow;
 }
 
-async function apiError(resp: Response): Promise<never> {
+// Returns the Error rather than throwing it: it must be async to read the
+// response body, and `throw apiError(resp)` would otherwise throw the pending
+// Promise (rendering as "[object Promise]"). Callers do `throw await apiError`.
+async function apiError(resp: Response): Promise<Error> {
   let detail = '';
   try {
     const body = (await resp.clone().json()) as { detail?: unknown };
@@ -103,5 +106,5 @@ async function apiError(resp: Response): Promise<never> {
   } catch {
     detail = await resp.text().catch(() => '');
   }
-  throw new Error(`admin documents request failed (${resp.status}): ${detail}`);
+  return new Error(`admin documents request failed (${resp.status}): ${detail}`);
 }
