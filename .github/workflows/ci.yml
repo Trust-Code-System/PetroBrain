@@ -162,3 +162,32 @@ jobs:
         run: |
           terraform -chdir=infra/envs/prod init -backend=false
           terraform -chdir=infra/envs/prod validate
+
+  security:
+    name: security scan (pip-audit + bandit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install scanners
+        run: pip install pip-audit bandit
+
+      # Dependency CVE audit. pdfminer-six CVE-2025-64512/70559 are accepted transitive
+      # findings (pulled by pdfplumber; no compatible bump yet) — see docs/SECURITY_SCAN.md.
+      # Any OTHER dependency CVE fails the build.
+      - name: Dependency audit (pip-audit)
+        run: |
+          pip-audit -r requirements.txt --ignore-vuln CVE-2025-64512 --ignore-vuln CVE-2025-70559
+          pip-audit -r requirements-tierb.txt --ignore-vuln CVE-2025-64512 --ignore-vuln CVE-2025-70559
+
+      # Static security scan. MEDIUM B608 are parameterized-SQL false positives; the gate is
+      # on HIGH. The one HIGH (B613 bidi chars in the filename deny-set) is suppressed inline
+      # with `# nosec B613`. See docs/SECURITY_SCAN.md.
+      - name: Static security scan (bandit, high severity)
+        run: bandit -r app --severity-level high
