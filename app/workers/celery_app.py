@@ -7,22 +7,38 @@ broker URL pointed at an in-DMZ Redis. The application object is exposed as
 """
 from __future__ import annotations
 
+import logging
+
 from celery import Celery
 
 from app.config import get_settings
 from app.core.redis_security import redis_ssl_options
 
+logger = logging.getLogger("petrobrain.celery")
+
 
 def build_celery_app() -> Celery:
     settings = get_settings()
+    broker_url = (settings.celery_broker_url or "").strip()
+    # With no broker there is nothing to publish to, so dispatching a task would
+    # crash every upload with "No such transport: ''". Fall back to running the
+    # pipeline inline (eager) instead. Production always has a rediss:// broker
+    # (enforced by validate_production_settings), so this only self-heals the
+    # single-service/demo deploys that have no Redis + worker.
+    eager = settings.celery_task_always_eager or not broker_url
+    if eager and not settings.celery_task_always_eager:
+        logger.warning(
+            "PB_CELERY_BROKER_URL is empty; running ingestion inline "
+            "(task_always_eager). Configure a broker + worker for async ingestion."
+        )
     app = Celery(
         "petrobrain",
-        broker=settings.celery_broker_url,
+        broker=broker_url,
         backend=settings.celery_result_backend,
         include=["app.workers.ingest_worker"],
     )
-    app.conf.task_always_eager = settings.celery_task_always_eager
-    app.conf.task_eager_propagates = settings.celery_task_always_eager
+    app.conf.task_always_eager = eager
+    app.conf.task_eager_propagates = eager
     app.conf.task_acks_late = True
     app.conf.task_default_queue = "petrobrain.ingest"
     app.conf.worker_max_tasks_per_child = 100
