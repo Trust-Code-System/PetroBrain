@@ -171,6 +171,16 @@ def test_vectorstore_upsert_passes_tenant_in_insert_rows():
     assert rows[0][0] == "tenant-a"
 
 
+def test_vectorstore_upsert_serializes_embedding_for_pgvector():
+    pool = FakePool()
+    store = VectorStore(pool)
+
+    asyncio.run(store.upsert([valid_row("tenant-a")]))
+
+    _, rows = pool.con.executemany_calls[0]
+    assert rows[0][9] == "[0.1,0.2]"
+
+
 def test_vectorstore_upsert_sets_transaction_scoped_tenant_context_before_insert():
     pool = FakePool()
     store = VectorStore(pool)
@@ -226,6 +236,10 @@ def test_vectorstore_hybrid_search_applies_tenant_filter_to_dense_and_sparse_que
         assert "asset = ANY($4::text[]) OR asset IS NULL" in query
         assert params[0] == "tenant-a"
         assert params[3] == ["Rig-7"]
+        if "'dense'" in query:
+            assert params[1] == "[0.1,0.2]"
+        else:
+            assert params[1] == "kick"
 
 
 def test_doc_chunks_rls_migration_requires_session_tenant():

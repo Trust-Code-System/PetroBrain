@@ -7,6 +7,7 @@ row-level security). The retriever NEVER issues a query without a tenant filter.
 """
 from __future__ import annotations
 
+import math
 from typing import Any
 
 SCHEMA = """
@@ -47,7 +48,7 @@ class VectorStore:
                 await con.executemany(q, [
                     (r["tenant_id"], r["document_id"], r.get("title"), r.get("revision"),
                      r.get("jurisdiction"), r.get("asset"), r.get("clause"),
-                     r.get("effective_date"), r["text"], r["embedding"])
+                     r.get("effective_date"), r["text"], _pgvector_literal(r["embedding"]))
                     for r in rows
                 ])
         return len(rows)
@@ -68,7 +69,7 @@ class VectorStore:
         tenant_id = _require_tenant_id(tenant_id)
         asset_list = _normalize_asset_filter(asset, assets)
         asset_filter = "AND (asset = ANY($4::text[]) OR asset IS NULL)" if asset_list else ""
-        params: list[Any] = [tenant_id, query_embedding, top_k]
+        params: list[Any] = [tenant_id, _pgvector_literal(query_embedding), top_k]
         if asset_list:
             params.append(asset_list)
         dense = f"""
@@ -123,6 +124,27 @@ def _tenant_id_for_rows(rows: list[dict[str, Any]]) -> str:
     if len(tenant_ids) != 1:
         raise ValueError("vectorstore upsert rows must belong to one tenant")
     return next(iter(tenant_ids))
+
+
+def _pgvector_literal(embedding: Any) -> str:
+    """Serialize a Python embedding list to pgvector's text input format.
+
+    asyncpg does not know how to adapt Python lists to the pgvector extension's
+    vector type unless a custom codec is registered on every connection.
+    Passing the canonical text literal keeps inserts and vector searches working
+    with plain asyncpg pools.
+    """
+    if not isinstance(embedding, (list, tuple)) or not embedding:
+        raise ValueError("embedding must be a non-empty numeric list")
+    parts: list[str] = []
+    for value in embedding:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("embedding values must be numeric")
+        numeric = float(value)
+        if not math.isfinite(numeric):
+            raise ValueError("embedding values must be finite")
+        parts.append(str(numeric))
+    return "[" + ",".join(parts) + "]"
 
 
 def _reciprocal_rank_fusion(dense, sparse, k: int = 60):
