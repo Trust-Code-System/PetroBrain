@@ -76,6 +76,10 @@ _SAFETY_RULES: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
         "safety",
         (
             r"\b(?:bypass|disable|override|defeat|inhibit)\b.{0,35}\b(?:shutdown|interlock|trip|alarm|gas detector|relief|safety system)\b",
+            # Forcing/jamming a valve or actuator into a commanded state from the panel
+            # bypasses the interlock/automatic control that governs it - refuse, same class
+            # as defeating an interlock. ("force the valve open from the panel", etc.)
+            r"\b(?:force|jam|wedge|jog|stroke)\b.{0,25}\b(?:valve|sdv|bdv|esdv|actuator|solenoid|damper)\b.{0,20}\b(?:open|close|closed|shut)\b",
             r"\bcontinue hot work\b.{0,30}\bwithout (?:a )?permit\b",
             r"\bfake\b.{0,20}\bptw\b.{0,20}\bsign[- ]?off\b",
         ),

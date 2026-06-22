@@ -1,6 +1,8 @@
 """Tenant-scoped persistence for PetroBrain compliance and operations tasks."""
 from __future__ import annotations
 
+import builtins
+
 import json
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -23,7 +25,7 @@ class TaskRecord:
     tenant_id: str
     created_by_user_id: str
     created_by_user_name: str | None
-    assigned_to_user_ids: list[str]
+    assigned_to_user_ids: builtins.list[str]
     assigned_to_team: str | None
     title: str
     description: str
@@ -37,7 +39,7 @@ class TaskRecord:
     timezone: str
     next_run_at: str | None
     last_run_at: str | None
-    reminder_channels: list[str]
+    reminder_channels: builtins.list[str]
     related_module: str | None
     related_asset_id: str | None
     related_project_id: str | None
@@ -132,7 +134,7 @@ class LocalJsonTasksRepository:
         category: str | None = None, assigned_user_id: str | None = None,
         assigned_team: str | None = None, overdue_only: bool = False,
         due_only: bool = False, limit: int = 100, offset: int = 0,
-    ) -> list[dict[str, Any]]:
+    ) -> builtins.list[dict[str, Any]]:
         now = _now()
         rows = [r for r in self._read() if r["tenant_id"] == tenant_id]
         if status:
@@ -187,16 +189,16 @@ class LocalJsonTasksRepository:
             self._write_locked(kept)
             return True
 
-    def _read(self) -> list[dict[str, Any]]:
+    def _read(self) -> builtins.list[dict[str, Any]]:
         with self._lock:
             return self._read_locked()
 
-    def _read_locked(self) -> list[dict[str, Any]]:
+    def _read_locked(self) -> builtins.list[dict[str, Any]]:
         if not self.path.exists():
             return []
         return [json.loads(line) for line in self.path.read_text(encoding="utf-8").splitlines() if line]
 
-    def _write_locked(self, rows: list[dict[str, Any]]) -> None:
+    def _write_locked(self, rows: builtins.list[dict[str, Any]]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(self.path.suffix + ".tmp")
         with tmp.open("w", encoding="utf-8") as handle:
@@ -262,9 +264,9 @@ class PostgresTasksRepository:
         category: str | None = None, assigned_user_id: str | None = None,
         assigned_team: str | None = None, overdue_only: bool = False,
         due_only: bool = False, limit: int = 100, offset: int = 0,
-    ) -> list[dict[str, Any]]:
+    ) -> builtins.list[dict[str, Any]]:
         clauses = ["tenant_id = %s"]
-        params: list[Any] = [tenant_id]
+        params: builtins.list[Any] = [tenant_id]
         if status:
             clauses.append("status = %s"); params.append(status)
         if category:

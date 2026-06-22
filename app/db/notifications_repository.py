@@ -1,6 +1,8 @@
 """Tenant-scoped admin notification center persistence."""
 from __future__ import annotations
 
+import builtins
+
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -61,7 +63,7 @@ class LocalJsonNotificationsRepository:
         self, *, tenant_id: str, status: str | None = None,
         severity: str | None = None, category: str | None = None,
         limit: int = 100, offset: int = 0,
-    ) -> list[dict[str, Any]]:
+    ) -> builtins.list[dict[str, Any]]:
         rows = [r for r in self._read() if r["tenant_id"] == tenant_id]
         if status:
             rows = [r for r in rows if r["status"] == status]
@@ -104,16 +106,16 @@ class LocalJsonNotificationsRepository:
             self._write_locked(kept)
             return True
 
-    def _read(self) -> list[dict[str, Any]]:
+    def _read(self) -> builtins.list[dict[str, Any]]:
         with self._lock:
             return self._read_locked()
 
-    def _read_locked(self) -> list[dict[str, Any]]:
+    def _read_locked(self) -> builtins.list[dict[str, Any]]:
         if not self.path.exists():
             return []
         return [json.loads(line) for line in self.path.read_text(encoding="utf-8").splitlines() if line]
 
-    def _write_locked(self, rows: list[dict[str, Any]]) -> None:
+    def _write_locked(self, rows: builtins.list[dict[str, Any]]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(self.path.suffix + ".tmp")
         with tmp.open("w", encoding="utf-8") as handle:
@@ -170,9 +172,9 @@ class PostgresNotificationsRepository:
         self, *, tenant_id: str, status: str | None = None,
         severity: str | None = None, category: str | None = None,
         limit: int = 100, offset: int = 0,
-    ) -> list[dict[str, Any]]:
+    ) -> builtins.list[dict[str, Any]]:
         clauses = ["tenant_id = %s"]
-        params: list[Any] = [tenant_id]
+        params: builtins.list[Any] = [tenant_id]
         for key, value in (("status", status), ("severity", severity), ("category", category)):
             if value:
                 clauses.append(f"{key} = %s"); params.append(value)
@@ -195,7 +197,7 @@ class PostgresNotificationsRepository:
             else ", resolved_by = %s, resolved_at = now()" if status == "resolved"
             else ""
         )
-        params: list[Any] = [status]
+        params: builtins.list[Any] = [status]
         if extra:
             params.append(actor_id)
         params.extend([tenant_id, notification_id])

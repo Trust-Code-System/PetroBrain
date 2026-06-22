@@ -1,6 +1,8 @@
 """Plan, execute, ground, and persist oil and gas research runs."""
 from __future__ import annotations
 
+import builtins
+
 import asyncio
 import re
 from collections.abc import AsyncIterator
@@ -27,7 +29,7 @@ from app.research.source_governance import (
 
 
 class ResearchPolicyError(ValueError):
-    def __init__(self, message: str, *, flags: list[str] | None = None) -> None:
+    def __init__(self, message: str, *, flags: builtins.list[str] | None = None) -> None:
         super().__init__(message)
         self.flags = flags or []
 
@@ -106,7 +108,7 @@ class ResearchService:
         user_id: str,
         role: str,
         action: str,
-        plan: list[dict[str, Any]] | None,
+        plan: builtins.list[dict[str, Any]] | None,
     ) -> dict[str, Any]:
         record = self._owned_record(
             tenant_id=tenant_id, research_id=research_id, user_id=user_id, role=role
@@ -170,8 +172,8 @@ class ResearchService:
 
         config = record["config"]
         plan = [dict(step) for step in record["plan"]]
-        raw_sources: list[dict[str, Any]] = []
-        flags: list[str] = []
+        raw_sources: builtins.list[dict[str, Any]] = []
+        flags: builtins.list[str] = []
         self.repository.update(
             tenant_id=tenant_id,
             research_id=research_id,
@@ -405,7 +407,7 @@ class ResearchService:
 
     def list(
         self, *, tenant_id: str, user_id: str, role: str, limit: int, offset: int
-    ) -> list[dict[str, Any]]:
+    ) -> builtins.list[dict[str, Any]]:
         owner_filter = None if role in {"admin", "platform_admin"} else user_id
         return self.repository.list(
             tenant_id=tenant_id,
@@ -460,8 +462,8 @@ class ResearchService:
 
     def _build_plan(
         self, request: ResearchPlanRequest, maximum_steps: int
-    ) -> list[dict[str, Any]]:
-        source_types: list[str] = []
+    ) -> builtins.list[dict[str, Any]]:
+        source_types: builtins.list[str] = []
         if request.internal_documents_allowed:
             source_types.append("internal_document")
         if request.web_search_allowed:
@@ -520,14 +522,14 @@ class ResearchService:
         question: str,
         asset_context: str | None,
         limit: int,
-    ) -> list[dict[str, Any]]:
+    ) -> builtins.list[dict[str, Any]]:
         records = self.document_repository.snapshot(tenant_id=tenant_id)
         terms = {
             token
             for token in re.findall(r"[a-zA-Z0-9]{3,}", question.lower())
             if token not in _STOPWORDS
         }
-        ranked: list[tuple[int, dict[str, Any], dict[str, Any]]] = []
+        ranked: builtins.list[tuple[int, dict[str, Any], dict[str, Any]]] = []
         for record in records:
             asset = record.get("asset")
             if asset_context and asset not in {None, "", asset_context}:
@@ -560,9 +562,9 @@ class ResearchService:
         query: str,
         tenant_id: str,
         config: dict[str, Any],
-        sources: list[dict[str, Any]],
-        outdated_sources: list[str],
-    ) -> tuple[dict[str, Any], list[str]]:
+        sources: builtins.list[dict[str, Any]],
+        outdated_sources: builtins.list[str],
+    ) -> tuple[dict[str, Any], builtins.list[str]]:
         not_verified = self._not_verified(config=config, sources=sources)
         contradictions = _potential_contradictions(sources)
         warnings = [
@@ -589,7 +591,7 @@ class ResearchService:
                 ["insufficient_sources"],
             )
 
-        flags: list[str] = []
+        flags: builtins.list[str] = []
         try:
             synthesis = await AnswerSynthesisService(llm=self.llm).synthesize(
                 AnswerSynthesisRequest(
@@ -665,7 +667,7 @@ class ResearchService:
             return await self.llm.complete(system, messages, tools=None)
 
     def _report_prompt(
-        self, *, query: str, config: dict[str, Any], sources: list[dict[str, Any]]
+        self, *, query: str, config: dict[str, Any], sources: builtins.list[dict[str, Any]]
     ) -> str:
         ledger = "\n\n".join(
             (
@@ -712,11 +714,11 @@ SOURCE LEDGER
         query: str,
         config: dict[str, Any],
         markdown: str,
-        sources: list[dict[str, Any]],
-        outdated_sources: list[str],
-        contradictions: list[str],
-        not_verified: list[str],
-        warnings: list[str],
+        sources: builtins.list[dict[str, Any]],
+        outdated_sources: builtins.list[str],
+        contradictions: builtins.list[str],
+        not_verified: builtins.list[str],
+        warnings: builtins.list[str],
     ) -> dict[str, Any]:
         title = _heading(markdown) or f"Research: {_truncate(query, 90)}"
         executive = _section(markdown, "Executive summary") or _first_paragraph(markdown)
@@ -764,9 +766,9 @@ SOURCE LEDGER
         }
 
     def _not_verified(
-        self, *, config: dict[str, Any], sources: list[dict[str, Any]]
-    ) -> list[str]:
-        notes: list[str] = []
+        self, *, config: dict[str, Any], sources: builtins.list[dict[str, Any]]
+    ) -> builtins.list[str]:
+        notes: builtins.list[str] = []
         if config.get("internal_documents_allowed") and not any(
             source["source_type"] == "internal_document" for source in sources
         ):
@@ -788,8 +790,8 @@ SOURCE LEDGER
     def _evidence_pack(
         self,
         *,
-        sources: list[dict[str, Any]],
-        flags: list[str],
+        sources: builtins.list[dict[str, Any]],
+        flags: builtins.list[str],
         safety_critical: bool,
     ) -> dict[str, Any]:
         citations = [
@@ -833,9 +835,9 @@ SOURCE LEDGER
     def _source_digest_report(
         self,
         query: str,
-        sources: list[dict[str, Any]],
-        not_verified: list[str],
-        warnings: list[str],
+        sources: builtins.list[dict[str, Any]],
+        not_verified: builtins.list[str],
+        warnings: builtins.list[str],
     ) -> str:
         rows = "\n".join(
             f"- [{source['id']}] **{source['title']}** "
@@ -858,7 +860,7 @@ SOURCE LEDGER
         )
 
     def _empty_report(
-        self, query: str, not_verified: list[str], warnings: list[str]
+        self, query: str, not_verified: builtins.list[str], warnings: builtins.list[str]
     ) -> str:
         return (
             f"# Research: {query}\n\n"
@@ -944,15 +946,15 @@ def _truncate(value: str, limit: int) -> str:
     return value if len(value) <= limit else value[:limit].rstrip() + "..."
 
 
-def _dedupe(values: list[str]) -> list[str]:
+def _dedupe(values: builtins.list[str]) -> builtins.list[str]:
     return list(dict.fromkeys(value for value in values if value))
 
 
 def _validate_citation_markers(
-    markdown: str, sources: list[dict[str, Any]]
-) -> tuple[str, list[str]]:
+    markdown: str, sources: builtins.list[dict[str, Any]]
+) -> tuple[str, builtins.list[str]]:
     valid = {source["id"] for source in sources}
-    flags: list[str] = []
+    flags: builtins.list[str] = []
 
     def replace(match: re.Match[str]) -> str:
         marker = match.group(1)
@@ -979,7 +981,7 @@ def _has_uncited_numeric_claim(markdown: str) -> bool:
     return False
 
 
-def _potential_contradictions(sources: list[dict[str, Any]]) -> list[str]:
+def _potential_contradictions(sources: builtins.list[dict[str, Any]]) -> builtins.list[str]:
     claims: dict[str, set[str]] = {}
     for source in sources:
         snippet = source.get("snippet") or ""
@@ -1012,7 +1014,7 @@ def _section(markdown: str, name: str) -> str:
     return match.group(1).strip() if match else ""
 
 
-def _section_bullets(markdown: str, name: str) -> list[str]:
+def _section_bullets(markdown: str, name: str) -> builtins.list[str]:
     content = _section(markdown, name)
     return [
         re.sub(r"^\s*[-*]\s+", "", line).strip()
@@ -1029,9 +1031,9 @@ def _first_paragraph(markdown: str) -> str:
     return ""
 
 
-def _markdown_sections(markdown: str) -> list[dict[str, str]]:
+def _markdown_sections(markdown: str) -> builtins.list[dict[str, str]]:
     matches = list(re.finditer(r"^##\s+(.+)$", markdown, re.M))
-    sections: list[dict[str, str]] = []
+    sections: builtins.list[dict[str, str]] = []
     for index, match in enumerate(matches):
         start = match.end()
         end = matches[index + 1].start() if index + 1 < len(matches) else len(markdown)

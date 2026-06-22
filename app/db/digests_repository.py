@@ -1,6 +1,8 @@
 """Tenant-scoped persistence for safe scheduled research digest definitions."""
 from __future__ import annotations
 
+import builtins
+
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,14 +48,14 @@ class LocalJsonDigestsRepository:
             self._write_locked(rows)
         return row
 
-    def list(self, *, tenant_id: str) -> list[dict[str, Any]]:
+    def list(self, *, tenant_id: str) -> builtins.list[dict[str, Any]]:
         return [row for row in self._read() if row["tenant_id"] == tenant_id]
 
-    def _read(self) -> list[dict[str, Any]]:
+    def _read(self) -> builtins.list[dict[str, Any]]:
         with self._lock:
             return self._read_locked()
 
-    def _read_locked(self) -> list[dict[str, Any]]:
+    def _read_locked(self) -> builtins.list[dict[str, Any]]:
         if not self.path.exists():
             return []
         return [
@@ -62,7 +64,7 @@ class LocalJsonDigestsRepository:
             if line
         ]
 
-    def _write_locked(self, rows: list[dict[str, Any]]) -> None:
+    def _write_locked(self, rows: builtins.list[dict[str, Any]]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(self.path.suffix + ".tmp")
         with tmp.open("w", encoding="utf-8") as handle:
@@ -103,7 +105,7 @@ class PostgresDigestsRepository:
             ).fetchone()
         return _serialize(row)
 
-    def list(self, *, tenant_id: str) -> list[dict[str, Any]]:
+    def list(self, *, tenant_id: str) -> builtins.list[dict[str, Any]]:
         with self._conn(tenant_id) as conn:
             rows = conn.execute(
                 "SELECT * FROM scheduled_digests WHERE tenant_id = %s "

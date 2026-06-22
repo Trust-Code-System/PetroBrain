@@ -1,6 +1,8 @@
 """Tenant-scoped persistence for Research Mode plans, runs, events, and reports."""
 from __future__ import annotations
 
+import builtins
+
 import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -21,12 +23,12 @@ class ResearchRecord:
     status: str
     query: str
     config: dict[str, Any]
-    plan: list[dict[str, Any]]
-    sources: list[dict[str, Any]] = field(default_factory=list)
+    plan: builtins.list[dict[str, Any]]
+    sources: builtins.list[dict[str, Any]] = field(default_factory=list)
     report: dict[str, Any] | None = None
     evidence_pack: dict[str, Any] = field(default_factory=dict)
-    events: list[dict[str, Any]] = field(default_factory=list)
-    flags: list[str] = field(default_factory=list)
+    events: builtins.list[dict[str, Any]] = field(default_factory=list)
+    flags: builtins.list[str] = field(default_factory=list)
     error: str | None = None
     created_utc: str = ""
     updated_utc: str = ""
@@ -52,7 +54,7 @@ class LocalJsonResearchRepository:
         role: str,
         query: str,
         config: dict[str, Any],
-        plan: list[dict[str, Any]],
+        plan: builtins.list[dict[str, Any]],
     ) -> ResearchRecord:
         if not tenant_id or not user_id:
             raise ValueError("tenant_id and user_id are required")
@@ -92,7 +94,7 @@ class LocalJsonResearchRepository:
         user_id: str | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> list[dict[str, Any]]:
+    ) -> builtins.list[dict[str, Any]]:
         rows = [row for row in self._read_all() if row.get("tenant_id") == tenant_id]
         if user_id:
             rows = [row for row in rows if row.get("user_id") == user_id]
@@ -151,11 +153,11 @@ class LocalJsonResearchRepository:
             self._write_all_locked(kept)
             return True
 
-    def _read_all(self) -> list[dict[str, Any]]:
+    def _read_all(self) -> builtins.list[dict[str, Any]]:
         with self._lock:
             return self._read_all_locked()
 
-    def _read_all_locked(self) -> list[dict[str, Any]]:
+    def _read_all_locked(self) -> builtins.list[dict[str, Any]]:
         if not self.path.exists():
             return []
         return [
@@ -164,7 +166,7 @@ class LocalJsonResearchRepository:
             if line.strip()
         ]
 
-    def _write_all_locked(self, rows: list[dict[str, Any]]) -> None:
+    def _write_all_locked(self, rows: builtins.list[dict[str, Any]]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(self.path.suffix + ".tmp")
         with tmp.open("w", encoding="utf-8") as handle:
@@ -191,7 +193,7 @@ class PostgresResearchRepository:
         role: str,
         query: str,
         config: dict[str, Any],
-        plan: list[dict[str, Any]],
+        plan: builtins.list[dict[str, Any]],
     ) -> ResearchRecord:
         from psycopg.types.json import Json
 
@@ -230,9 +232,9 @@ class PostgresResearchRepository:
         user_id: str | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> list[dict[str, Any]]:
+    ) -> builtins.list[dict[str, Any]]:
         clauses = ["tenant_id = %s"]
-        params: list[Any] = [tenant_id]
+        params: builtins.list[Any] = [tenant_id]
         if user_id:
             clauses.append("user_id = %s")
             params.append(user_id)
@@ -266,8 +268,8 @@ class PostgresResearchRepository:
         items = [(key, value) for key, value in patch.items() if key in allowed]
         if not items:
             return self.get(tenant_id=tenant_id, research_id=research_id)
-        assignments: list[str] = []
-        params: list[Any] = []
+        assignments: builtins.list[str] = []
+        params: builtins.list[Any] = []
         json_fields = {
             "config",
             "plan",

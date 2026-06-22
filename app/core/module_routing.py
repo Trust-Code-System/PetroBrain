@@ -195,21 +195,20 @@ class ModuleRouter:
         )
 
         if module_pinned and requested != "auto":
-            conflict = detected and detected != requested and confidence == "high"
+            conflict = bool(detected) and detected != requested and confidence == "high"
             notice = None
+            reason = f"{_LABELS[requested]} is pinned."
             if conflict:
+                assert detected is not None  # conflict is only set when a module was detected
                 notice = (
                     f"This question appears to match {_LABELS[detected]}, "
                     f"but {_LABELS[requested]} is pinned."
                 )
+                reason = f"{_REASONS[detected]} {_LABELS[requested]} remains pinned."
             return ModuleRouteDecision(
                 selected_module_for_this_turn=requested,
                 routing_confidence=confidence if detected else "low",
-                reason=(
-                    f"{_LABELS[requested]} is pinned."
-                    if not conflict
-                    else f"{_REASONS[detected]} {_LABELS[requested]} remains pinned."
-                ),
+                reason=reason,
                 user_visible_notice=notice,
                 safety_flags=safety_flags,
                 detected_module=detected,

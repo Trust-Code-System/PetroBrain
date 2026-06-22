@@ -196,7 +196,7 @@ def model_abatement(
         inventory.facility_id, inventory.period, projected_lines, gwp_set=inventory.gwp_set
     )
     projected_co2e = projected.totals()["co2e_tonnes"]
-    total_avoided = round(baseline_co2e - projected_co2e, 3)
+    total_avoided = round(float(baseline_co2e) - float(projected_co2e), 3)
 
     mac_curve = _build_mac_curve(modeled)
 
