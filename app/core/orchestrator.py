@@ -255,8 +255,10 @@ def _build_user_message_content(
         kind = getattr(a, "kind", None) or (
             a.get("kind") if isinstance(a, dict) else None
         )
-        name = getattr(a, "name", None) or (
-            a.get("name") if isinstance(a, dict) else "attachment"
+        name = str(
+            getattr(a, "name", None)
+            or (a.get("name") if isinstance(a, dict) else None)
+            or "attachment"
         )
         data = getattr(a, "data", None) or (
             a.get("data") if isinstance(a, dict) else None
@@ -287,7 +289,7 @@ def _build_user_message_content(
             note_lines.append(f"[image attached: {name}]")
         elif kind == "text" and data:
             inlined_text.append(f"--- {name} ---\n{data}\n--- end {name} ---")
-        elif kind == "document" and data:
+        elif kind == "document" and isinstance(data, str) and data:
             # The frontend ships PDFs/DOCXs as base64 in ``data``. Extract text
             # in-process with pdfplumber / python-docx (already deps); the
             # extracted body is inlined the same way text uploads are, so the

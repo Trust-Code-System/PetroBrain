@@ -71,7 +71,7 @@ def wire(monkeypatch, admin_repo, memory_store, fake_vectorstore):
     # Route + worker share the same in-process repo + object store.
     monkeypatch.setattr(routes_admin_documents, "_repository", lambda: admin_repo)
     monkeypatch.setattr(routes_admin_documents, "_object_store", lambda: memory_store)
-    monkeypatch.setattr(routes_admin_documents, "_scan_upload", lambda filename, body: None)
+    monkeypatch.setattr(routes_admin_documents, "_scan_upload", lambda filename, body, who: None)
     monkeypatch.setattr(ingest_worker, "_get_repository", lambda: admin_repo)
     monkeypatch.setattr(ingest_worker, "_get_object_store", lambda: memory_store)
     monkeypatch.setattr(ingest_worker, "_get_embedder", lambda: _FakeEmbedder())
@@ -213,7 +213,7 @@ def test_admin_upload_rejects_binary_text_file():
 
 
 def test_admin_upload_rejects_malware(monkeypatch, memory_store):
-    def _infected(filename, body):
+    def _infected(filename, body, who):
         raise HTTPException(status_code=422, detail="malware detected: Eicar-Test-Signature")
 
     monkeypatch.setattr(routes_admin_documents, "_scan_upload", _infected)

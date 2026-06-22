@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from app.config import get_settings
@@ -331,7 +331,8 @@ class PostgresOnboardingRepository:
                 "SELECT * FROM organization_invitations WHERE invite_token_hash = %s",
                 (_token_hash(raw_token),),
             ).fetchone()
-        return _serialize(row) if row else None
+        # dict_rows=True yields dict rows at runtime; mypy can't see that through the pool.
+        return _serialize(cast("dict[str, Any]", row)) if row else None
 
     def update_invitation(
         self,

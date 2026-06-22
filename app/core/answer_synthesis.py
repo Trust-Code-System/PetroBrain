@@ -348,13 +348,13 @@ def _normalize_sources(
             row.setdefault("relevance_reason", "Selected by the governed research workflow.")
             row.setdefault("freshness", "unknown")
             sources.append(row)
-        flags = []
+        source_flags = []
         if sources and all(
             source["reliability"] not in {"primary", "high"}
             for source in sources
         ):
-            flags.append("weak_public_sources")
-        return sources, flags, 0
+            source_flags.append("weak_public_sources")
+        return sources, source_flags, 0
 
     candidates: list[dict[str, Any]] = []
     for chunk in request.retrieved_internal_chunks:

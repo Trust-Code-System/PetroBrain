@@ -71,7 +71,7 @@ async def upload_document(
     if len(body) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="uploaded file exceeds 50 MiB limit")
     _validate_file_signature(filename, body)
-    _scan_upload(filename, body)
+    _scan_upload(filename, body, who)
 
     repo = _repository()
     object_store = _object_store()
@@ -158,7 +158,7 @@ def _validate_file_signature(filename: str, body: bytes) -> None:
         raise HTTPException(status_code=422, detail="uploaded text file appears to be binary")
 
 
-def _scan_upload(filename: str, body: bytes) -> None:
+def _scan_upload(filename: str, body: bytes, who: Principal) -> None:
     settings = get_settings()
     # H8: a non-prod deploy that accepts uploads with the scanner disabled is
     # the prospect-demo malware vector we saw in the audit. The fail-closed
@@ -174,6 +174,9 @@ def _scan_upload(filename: str, body: bytes) -> None:
             raise HTTPException(status_code=503, detail="malware scanner unavailable") from exc
         audit_logger.write(AuditEvent(
             event_type="admin_document_malware_scan_unavailable",
+            tenant_id=who.tenant_id,
+            user_id=who.user_id,
+            role=who.role,
             route="/admin/documents",
             request={"filename": filename},
             error={"status_code": 503, "detail": str(exc)},

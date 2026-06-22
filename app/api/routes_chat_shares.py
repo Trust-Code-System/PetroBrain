@@ -78,7 +78,7 @@ async def mint_share(req: MintShareRequest, who: Principal = Depends(get_princip
         snapshot=req.snapshot,
         ttl_days=SHARE_TTL_DAYS,
     )
-    data = record.as_dict() if hasattr(record, "as_dict") else record
+    data = record if isinstance(record, dict) else record.as_dict()
     audit_logger.write(AuditEvent(
         event_type="chat_share_mint",
         tenant_id=who.tenant_id,
