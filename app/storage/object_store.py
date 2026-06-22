@@ -111,14 +111,18 @@ def reset_object_store_cache() -> None:
     _cached_object_store.cache_clear()
 
 
-_UNSAFE_FILENAME_CHARS = set(
-    "‮"  # RIGHT-TO-LEFT OVERRIDE - flips on-screen rendering
-    "‭"  # LEFT-TO-RIGHT OVERRIDE
-    "​"  # ZERO WIDTH SPACE
-    "‌"  # ZERO WIDTH NON-JOINER
-    "‍"  # ZERO WIDTH JOINER
-    "﻿"  # ZERO WIDTH NO-BREAK SPACE (BOM)
-)
+# Bidi-override + zero-width + BOM characters we STRIP from uploaded filenames
+# (Trojan-Source / spoofed-name defence). Written as Unicode escapes so the literal
+# control characters never appear in this source file: the file stays clean and bandit's
+# B613 (bidirectional control characters) has nothing to flag - no suppression needed.
+_UNSAFE_FILENAME_CHARS = {
+    "\u202e",  # RIGHT-TO-LEFT OVERRIDE
+    "\u202d",  # LEFT-TO-RIGHT OVERRIDE
+    "\u200b",  # ZERO WIDTH SPACE
+    "\u200c",  # ZERO WIDTH NON-JOINER
+    "\u200d",  # ZERO WIDTH JOINER
+    "\ufeff",  # ZERO WIDTH NO-BREAK SPACE (BOM)
+}
 
 
 def object_key_for(*, tenant_id: str, ingest_id: str, filename: str) -> str:
