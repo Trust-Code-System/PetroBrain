@@ -74,7 +74,7 @@ export function DocumentsTable({
               <td className="px-3 py-2">
                 <div className="flex flex-col gap-1">
                   <StatusBadge status={row.status} />
-                  {row.failure_reason ? (
+                  {row.status === 'failed' && row.failure_reason ? (
                     <span className="text-xs text-danger-fg dark:text-danger-bg">{row.failure_reason}</span>
                   ) : null}
                 </div>

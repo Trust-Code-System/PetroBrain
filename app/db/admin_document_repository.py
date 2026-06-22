@@ -124,6 +124,8 @@ class LocalJsonAdminDocumentRepository:
                     row.setdefault("status_history", []).append({"status": status, "at": now})
                     if failure_reason is not None:
                         row["failure_reason"] = failure_reason
+                    elif status != "failed":
+                        row["failure_reason"] = None
                     if chunk_count is not None:
                         row["chunk_count"] = chunk_count
                     self._write_all_locked(rows)
@@ -221,6 +223,8 @@ class PostgresAdminDocumentRepository:
         if failure_reason is not None:
             sets.append("failure_reason = %s")
             params.append(failure_reason)
+        elif status != "failed":
+            sets.append("failure_reason = NULL")
         if chunk_count is not None:
             sets.append("chunk_count = %s")
             params.append(chunk_count)
@@ -298,6 +302,7 @@ def _now() -> str:
 
 
 def _summary(record: dict[str, Any]) -> dict[str, Any]:
+    status = record.get("status", "queued")
     return {
         "ingest_id": record["ingest_id"],
         "document_id": record["document_id"],
@@ -309,9 +314,9 @@ def _summary(record: dict[str, Any]) -> dict[str, Any]:
         "filename": record["filename"],
         "content_type": record.get("content_type", ""),
         "size_bytes": record.get("size_bytes", 0),
-        "status": record.get("status", "queued"),
+        "status": status,
         "chunk_count": record.get("chunk_count", 0),
-        "failure_reason": record.get("failure_reason"),
+        "failure_reason": record.get("failure_reason") if status == "failed" else None,
         "created_utc": record["created_utc"],
         "updated_utc": record.get("updated_utc", record["created_utc"]),
     }

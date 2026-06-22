@@ -307,15 +307,16 @@ def _scan_upload(filename: str, body: bytes, who: Principal) -> None:
 
 
 def _to_status(record: dict[str, Any]) -> dict[str, Any]:
+    status = record["status"]
     return {
         "ingest_id": record["ingest_id"],
         "tenant_id": record["tenant_id"],
         "document_id": record["document_id"],
         "title": record["title"],
         "filename": record["filename"],
-        "status": record["status"],
+        "status": status,
         "chunk_count": record.get("chunk_count", 0),
-        "failure_reason": record.get("failure_reason"),
+        "failure_reason": record.get("failure_reason") if status == "failed" else None,
         "created_utc": record["created_utc"],
         "updated_utc": record.get("updated_utc", record["created_utc"]),
     }

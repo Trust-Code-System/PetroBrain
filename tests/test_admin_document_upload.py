@@ -356,6 +356,7 @@ def test_requeue_reruns_a_failed_document(monkeypatch, admin_repo, memory_store)
     assert rq.json()["status"] == "done"
 
     record = admin_repo.get(tenant_id="tenant-a", ingest_id=ingest_id)
+    assert record["failure_reason"] is None
     statuses = [s["status"] for s in record["status_history"]]
     assert statuses[-4:] == ["queued", "extracting", "embedding", "done"]
 

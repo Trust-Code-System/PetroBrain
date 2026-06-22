@@ -99,6 +99,15 @@ def test_failed_status_records_reason(repo):
     assert failed["status"] == "failed"
     assert failed["failure_reason"] == "bad pdf"
 
+    recovered = repo.update_status(
+        tenant_id="tenant-a",
+        ingest_id=rec.ingest_id,
+        status="done",
+        chunk_count=2,
+    )
+    assert recovered["status"] == "done"
+    assert recovered["failure_reason"] is None
+
 
 def test_invalid_status_and_missing_ingest(repo):
     rec = _create(repo)

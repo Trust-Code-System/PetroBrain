@@ -81,6 +81,26 @@ describe('DocumentsTable', () => {
     expect(within(row).getByText('extract: encoding error')).toBeInTheDocument();
   });
 
+  it('does not show a stale failure_reason underneath a recovered done status', () => {
+    render(
+      <DocumentsTable
+        rows={[
+          makeRow({
+            ingest_id: 'ing-recovered',
+            status: 'done',
+            chunk_count: 2,
+            failure_reason: 'embed: old error',
+          }),
+        ]}
+        isLoading={false}
+        isError={false}
+      />,
+    );
+    const row = screen.getByTestId('row-ing-recovered');
+    expect(within(row).getByText('done')).toBeInTheDocument();
+    expect(within(row).queryByText('embed: old error')).toBeNull();
+  });
+
   it('shows Requeue only for queued/failed rows and fires onRequeue with the ingest id', () => {
     const onRequeue = vi.fn();
     render(
