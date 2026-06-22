@@ -282,14 +282,14 @@ def test_admin_list_is_tenant_isolated(admin_repo):
     assert len(a_list.json()["documents"]) == 1
 
 
-def test_upload_marks_failed_and_503_when_dispatch_raises(monkeypatch, admin_repo, memory_store):
-    # Simulate an unreachable/empty broker: .delay() blows up at dispatch time.
+def test_upload_runs_inline_when_async_dispatch_fails(monkeypatch, admin_repo, memory_store):
+    # Broken broker: .delay() raises. The route must fall back to running the
+    # pipeline inline (.apply()) so the document still reaches 'done' instead of
+    # being stranded in 'queued'.
     def _boom(*args, **kwargs):
         raise RuntimeError("No such transport: ''")
 
-    monkeypatch.setattr(
-        routes_admin_documents.ingest_document_task, "delay", _boom
-    )
+    monkeypatch.setattr(routes_admin_documents.ingest_document_task, "delay", _boom)
 
     r = client.post(
         "/admin/documents",
@@ -297,8 +297,29 @@ def test_upload_marks_failed_and_503_when_dispatch_raises(monkeypatch, admin_rep
         data={"metadata": json.dumps(_payload(document_id="SOP-BROKER-1"))},
         files={"file": ("kick.md", _KICK_MD.encode("utf-8"), "text/markdown")},
     )
-    # Instead of a silent 'queued' + opaque 500, the upload 503s and the record
-    # is visibly 'failed' with the dispatch reason.
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "done"
+    rows = admin_repo.list_records(tenant_id="tenant-a")
+    assert len(rows) == 1
+    assert rows[0]["status"] == "done"
+    assert rows[0]["chunk_count"] >= 1
+
+
+def test_upload_503_when_async_and_inline_both_fail(monkeypatch, admin_repo, memory_store):
+    # Only when BOTH async dispatch and the inline fallback fail is the document
+    # marked 'failed' and the upload surfaced as a 503.
+    def _boom(*args, **kwargs):
+        raise RuntimeError("No such transport: ''")
+
+    monkeypatch.setattr(routes_admin_documents.ingest_document_task, "delay", _boom)
+    monkeypatch.setattr(routes_admin_documents.ingest_document_task, "apply", _boom)
+
+    r = client.post(
+        "/admin/documents",
+        headers=_admin_headers(),
+        data={"metadata": json.dumps(_payload(document_id="SOP-BROKER-2"))},
+        files={"file": ("kick.md", _KICK_MD.encode("utf-8"), "text/markdown")},
+    )
     assert r.status_code == 503, r.text
     rows = admin_repo.list_records(tenant_id="tenant-a")
     assert len(rows) == 1
@@ -307,17 +328,15 @@ def test_upload_marks_failed_and_503_when_dispatch_raises(monkeypatch, admin_rep
 
 
 def test_requeue_reruns_a_failed_document(monkeypatch, admin_repo, memory_store):
-    # Drive a document into 'failed' via a one-shot dispatch failure.
-    calls = {"n": 0}
+    # Drive a document into 'failed' by failing both async + inline dispatch.
     real_delay = routes_admin_documents.ingest_document_task.delay
+    real_apply = routes_admin_documents.ingest_document_task.apply
 
-    def _flaky(*args, **kwargs):
-        calls["n"] += 1
-        if calls["n"] == 1:
-            raise RuntimeError("No such transport: ''")
-        return real_delay(*args, **kwargs)
+    def _boom(*args, **kwargs):
+        raise RuntimeError("No such transport: ''")
 
-    monkeypatch.setattr(routes_admin_documents.ingest_document_task, "delay", _flaky)
+    monkeypatch.setattr(routes_admin_documents.ingest_document_task, "delay", _boom)
+    monkeypatch.setattr(routes_admin_documents.ingest_document_task, "apply", _boom)
 
     up = client.post(
         "/admin/documents",
@@ -328,7 +347,10 @@ def test_requeue_reruns_a_failed_document(monkeypatch, admin_repo, memory_store)
     assert up.status_code == 503
     ingest_id = admin_repo.list_records(tenant_id="tenant-a")[0]["ingest_id"]
 
-    # Broker is healthy now: requeue should run the pipeline to completion.
+    # Dispatch healthy again: requeue should run the pipeline to completion.
+    monkeypatch.setattr(routes_admin_documents.ingest_document_task, "delay", real_delay)
+    monkeypatch.setattr(routes_admin_documents.ingest_document_task, "apply", real_apply)
+
     rq = client.post(f"/admin/documents/{ingest_id}/requeue", headers=_admin_headers())
     assert rq.status_code == 200, rq.text
     assert rq.json()["status"] == "done"
@@ -367,13 +389,16 @@ def test_requeue_requires_admin_role():
 
 
 def test_requeue_stuck_reruns_all_queued(monkeypatch, admin_repo, memory_store):
-    # Two uploads land in 'failed' (broker down), then a bulk requeue heals both.
+    # Two uploads land in 'failed' (both async + inline dispatch down), then a
+    # bulk requeue heals both once dispatch works again.
     real_delay = routes_admin_documents.ingest_document_task.delay
+    real_apply = routes_admin_documents.ingest_document_task.apply
 
     def _boom(*args, **kwargs):
         raise RuntimeError("No such transport: ''")
 
     monkeypatch.setattr(routes_admin_documents.ingest_document_task, "delay", _boom)
+    monkeypatch.setattr(routes_admin_documents.ingest_document_task, "apply", _boom)
     for i in (1, 2):
         client.post(
             "/admin/documents",
@@ -383,8 +408,9 @@ def test_requeue_stuck_reruns_all_queued(monkeypatch, admin_repo, memory_store):
         )
     assert all(r["status"] == "failed" for r in admin_repo.list_records(tenant_id="tenant-a"))
 
-    # Broker healthy again (don't undo() - that would revert the wire fixture).
+    # Dispatch healthy again (don't undo() - that would revert the wire fixture).
     monkeypatch.setattr(routes_admin_documents.ingest_document_task, "delay", real_delay)
+    monkeypatch.setattr(routes_admin_documents.ingest_document_task, "apply", real_apply)
 
     rq = client.post("/admin/documents/requeue-stuck", headers=_admin_headers())
     assert rq.status_code == 200, rq.text

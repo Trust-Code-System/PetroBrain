@@ -48,6 +48,15 @@ def test_whitespace_only_broker_forces_eager(fresh_settings):
     assert app.conf.task_always_eager is True
 
 
+def test_schemeless_broker_forces_eager(fresh_settings):
+    # A bare hostname (no redis:// scheme) is what produced "No such transport: ''"
+    # in prod: non-empty, so the empty-check missed it, but kombu can't resolve it.
+    app = fresh_settings(
+        {"PB_CELERY_BROKER_URL": "red-abc123:6379", "PB_CELERY_TASK_ALWAYS_EAGER": "false"}
+    )
+    assert app.conf.task_always_eager is True
+
+
 def test_configured_broker_stays_async(fresh_settings):
     app = fresh_settings(
         {"PB_CELERY_BROKER_URL": "redis://localhost:6379/1", "PB_CELERY_TASK_ALWAYS_EAGER": "false"}

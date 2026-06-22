@@ -20,16 +20,20 @@ logger = logging.getLogger("petrobrain.celery")
 def build_celery_app() -> Celery:
     settings = get_settings()
     broker_url = (settings.celery_broker_url or "").strip()
-    # With no broker there is nothing to publish to, so dispatching a task would
-    # crash every upload with "No such transport: ''". Fall back to running the
-    # pipeline inline (eager) instead. Production always has a rediss:// broker
+    # A publishable broker needs a transport scheme (redis://, rediss://, amqp://).
+    # Empty OR scheme-less values (e.g. a bare hostname) resolve to kombu transport
+    # '' and crash every dispatch with "No such transport: ''", so fall back to
+    # running the pipeline inline (eager). Production always has a rediss:// broker
     # (enforced by validate_production_settings), so this only self-heals the
     # single-service/demo deploys that have no Redis + worker.
-    eager = settings.celery_task_always_eager or not broker_url
+    broker_scheme = broker_url.split("://", 1)[0] if "://" in broker_url else ""
+    eager = settings.celery_task_always_eager or not broker_scheme
     if eager and not settings.celery_task_always_eager:
         logger.warning(
-            "PB_CELERY_BROKER_URL is empty; running ingestion inline "
-            "(task_always_eager). Configure a broker + worker for async ingestion."
+            "PB_CELERY_BROKER_URL has no usable transport scheme (%r); running "
+            "ingestion inline (task_always_eager). Configure redis(s):// + a worker "
+            "for async ingestion.",
+            broker_url or "<empty>",
         )
     app = Celery(
         "petrobrain",

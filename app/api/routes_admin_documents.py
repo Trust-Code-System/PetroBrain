@@ -12,6 +12,7 @@ and enqueues the ingestion task. The Celery worker handles extract -> chunk
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 from uuid import uuid4
 
@@ -31,6 +32,7 @@ from app.workers.ingest_worker import ingest_document_task
 
 router = APIRouter(prefix="/admin/documents", tags=["admin", "documents"])
 audit_logger = get_audit_logger()
+logger = logging.getLogger("petrobrain.admin_documents")
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB; tighten per tenant later
 _admin_only = require_role("admin", "platform_admin")
@@ -198,13 +200,23 @@ async def requeue_document(ingest_id: str, who: Principal = Depends(_admin_only)
 def _dispatch_ingest(repo, *, tenant_id: str, ingest_id: str) -> None:
     """Enqueue the ingestion task. In eager mode this runs the pipeline inline.
 
-    If dispatch raises (e.g. an empty/unreachable broker in async mode), mark the
-    record ``failed`` with the reason so it surfaces in the UI instead of sitting
-    in ``queued`` forever, then re-raise for the caller to translate to a 503.
+    If async dispatch raises (an empty/scheme-less/unreachable broker), don't
+    strand the document: run the task inline via ``.apply()`` (which needs no
+    broker) so it still gets processed. Only if that inline run also fails do we
+    mark the record ``failed`` and re-raise for the caller to translate to a 503.
     """
     try:
         ingest_document_task.delay(tenant_id, ingest_id)
-    except Exception as exc:  # noqa: BLE001
+        return
+    except Exception as exc:  # noqa: BLE001 - broker publish failed; fall back to inline
+        logger.warning(
+            "celery dispatch failed for ingest %s (%s); running ingestion inline",
+            ingest_id, exc,
+        )
+
+    try:
+        ingest_document_task.apply(args=(tenant_id, ingest_id), throw=False)
+    except Exception as exc:  # noqa: BLE001 - inline execution itself failed
         try:
             repo.update_status(
                 tenant_id=tenant_id,
@@ -212,7 +224,7 @@ def _dispatch_ingest(repo, *, tenant_id: str, ingest_id: str) -> None:
                 status="failed",
                 failure_reason=f"dispatch: {exc}",
             )
-        except Exception:  # noqa: BLE001 - never mask the original dispatch error
+        except Exception:  # noqa: BLE001 - never mask the original failure
             pass
         raise
 
