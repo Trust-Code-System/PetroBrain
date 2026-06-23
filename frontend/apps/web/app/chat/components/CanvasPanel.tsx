@@ -7,6 +7,7 @@ import { Banner } from '@petrobrain/ui';
 import { isStructuredToolMessage } from '@/lib/chat/canvas';
 import type { AssistantMessage } from '@/lib/chat/types';
 
+import { BottomSheet } from './BottomSheet';
 import { EvidencePanel } from './EvidencePanel';
 import { Markdown } from './Markdown';
 import { userSafeToolLabel } from './WorkingPanel';
@@ -36,15 +37,7 @@ export function CanvasPanel({
   const eyebrow = structured ? 'Generated document' : 'Long-form answer';
   const createdAt = new Date(message.createdAt);
 
-  return (
-    <aside
-      aria-label="Canvas: expanded message"
-      className="relative flex h-screen min-h-0 flex-col overflow-hidden border-l border-neutral-200/60 bg-gradient-to-b from-white via-white to-primary-50/30 dark:border-neutral-800/60 dark:from-neutral-950 dark:via-neutral-950 dark:to-primary-900/20"
-    >
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -top-32 right-[-15%] h-96 w-96 rounded-full bg-primary-200/30 blur-3xl dark:bg-primary-800/20"
-      />
+  const header = (
       <header className="relative z-10 flex shrink-0 items-center justify-between gap-3 border-b border-neutral-200/60 bg-white/70 px-5 py-3 backdrop-blur-xl dark:border-neutral-800/60 dark:bg-neutral-900/60">
         <div className="flex min-w-0 flex-col">
           <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary-600 dark:text-primary-400">
@@ -66,8 +59,10 @@ export function CanvasPanel({
           </svg>
         </button>
       </header>
+  );
 
-      <div className="relative z-10 flex-1 overflow-y-auto px-7 py-6">
+  const scrollBody = (
+      <div className="relative z-10 flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
         {safetyToolResult ? (
           <div className="mb-5">
             <Banner tone="brand" title="DECISION SUPPORT ONLY">
@@ -135,6 +130,28 @@ export function CanvasPanel({
           </details>
         ) : null}
       </div>
-    </aside>
+  );
+
+  return (
+    <>
+      {/* Desktop: docked canvas column in the chat grid. */}
+      <aside
+        aria-label="Canvas: expanded message"
+        className="relative hidden h-dvh min-h-0 flex-col overflow-hidden border-l border-neutral-200/60 bg-gradient-to-b from-white via-white to-primary-50/30 md:flex dark:border-neutral-800/60 dark:from-neutral-950 dark:via-neutral-950 dark:to-primary-900/20"
+      >
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-32 right-[-15%] h-96 w-96 rounded-full bg-primary-200/30 blur-3xl dark:bg-primary-800/20"
+        />
+        {header}
+        {scrollBody}
+      </aside>
+
+      {/* Mobile: the same content as a full-height bottom sheet. */}
+      <BottomSheet onClose={onClose} label={`Canvas: ${eyebrow}`}>
+        {header}
+        {scrollBody}
+      </BottomSheet>
+    </>
   );
 }

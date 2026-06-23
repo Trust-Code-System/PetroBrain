@@ -542,7 +542,7 @@ export function ChatComposer({ onSubmit, disabled, sending, onStop }: ChatCompos
   return (
     <form
       onSubmit={submit}
-      className="relative z-10 bg-transparent px-4 py-3"
+      className="safe-composer relative z-10 bg-transparent px-3 pt-3 sm:px-4"
       aria-label="Ask PetroBrain"
     >
       <div
@@ -624,7 +624,9 @@ export function ChatComposer({ onSubmit, disabled, sending, onStop }: ChatCompos
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           placeholder="Ask a question grounded in your SOPs, or build a kill sheet…"
-          className="scrollbar-hide max-h-40 min-h-[28px] resize-none border-0 bg-transparent px-2.5 py-1.5 text-[15px] leading-relaxed text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-0 dark:text-neutral-100 dark:placeholder:text-neutral-500"
+          // text-base (16px) is deliberate: iOS Safari zooms the page when a
+          // focused input is under 16px, which is the classic mobile chat jank.
+          className="scrollbar-hide max-h-40 min-h-[28px] resize-none border-0 bg-transparent px-2.5 py-1.5 text-base leading-relaxed text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-0 dark:text-neutral-100 dark:placeholder:text-neutral-500"
           disabled={disabled}
         />
 
@@ -657,7 +659,7 @@ export function ChatComposer({ onSubmit, disabled, sending, onStop }: ChatCompos
                 disabled={disabled || sending}
                 aria-label={listening ? 'Stop voice input' : 'Start voice input'}
                 title={listening ? 'Stop voice input' : 'Start voice input'}
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-full border transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+                className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition-all disabled:cursor-not-allowed disabled:opacity-50 sm:h-8 sm:w-8 ${
                   listening
                     ? 'border-primary-300 bg-primary-50 text-primary-700 shadow-[0_0_0_3px_rgba(234,88,12,0.12)] dark:border-primary-600 dark:bg-primary-900/30 dark:text-primary-200'
                     : 'border-neutral-200/80 bg-white text-neutral-600 hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:border-primary-600 dark:hover:bg-primary-900/30 dark:hover:text-primary-300'
@@ -686,7 +688,7 @@ export function ChatComposer({ onSubmit, disabled, sending, onStop }: ChatCompos
               onClick={onStop}
               aria-label="Stop generating"
               title="Stop generating"
-              className="group relative isolate flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-neutral-800 to-neutral-900 text-white shadow-[0_6px_14px_-6px_rgba(15,23,42,0.45),inset_0_1px_0_rgba(255,255,255,0.18)] transition-all hover:from-neutral-700 hover:to-neutral-800 dark:from-neutral-200 dark:to-neutral-100 dark:text-neutral-900 dark:hover:from-neutral-100 dark:hover:to-white"
+              className="group relative isolate flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-neutral-800 to-neutral-900 text-white sm:h-9 sm:w-9 shadow-[0_6px_14px_-6px_rgba(15,23,42,0.45),inset_0_1px_0_rgba(255,255,255,0.18)] transition-all hover:from-neutral-700 hover:to-neutral-800 dark:from-neutral-200 dark:to-neutral-100 dark:text-neutral-900 dark:hover:from-neutral-100 dark:hover:to-white"
             >
               <span aria-hidden className="block h-3 w-3 rounded-[2px] bg-current" />
             </button>
@@ -695,7 +697,7 @@ export function ChatComposer({ onSubmit, disabled, sending, onStop }: ChatCompos
               type="submit"
               disabled={!canSend}
               aria-label="Send"
-              className="group relative isolate flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-primary-500 to-primary-700 text-white shadow-[0_6px_14px_-6px_rgba(234,88,12,0.55),inset_0_1px_0_rgba(255,255,255,0.28)] transition-all hover:from-primary-400 hover:to-primary-600 hover:shadow-[0_10px_24px_-8px_rgba(234,88,12,0.55)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-[0_6px_14px_-6px_rgba(234,88,12,0.55),inset_0_1px_0_rgba(255,255,255,0.28)]"
+              className="group relative isolate flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-primary-500 to-primary-700 text-white sm:h-9 sm:w-9 shadow-[0_6px_14px_-6px_rgba(234,88,12,0.55),inset_0_1px_0_rgba(255,255,255,0.28)] transition-all hover:from-primary-400 hover:to-primary-600 hover:shadow-[0_10px_24px_-8px_rgba(234,88,12,0.55)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-[0_6px_14px_-6px_rgba(234,88,12,0.55),inset_0_1px_0_rgba(255,255,255,0.28)]"
             >
               <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
                 <path d="M10 16V4M4 10l6-6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />

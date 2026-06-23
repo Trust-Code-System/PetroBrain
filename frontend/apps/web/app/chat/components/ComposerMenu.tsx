@@ -127,7 +127,7 @@ export function ComposerMenu({
         aria-haspopup="true"
         aria-expanded={open ? 'true' : 'false'}
         aria-label="Open composer menu"
-        className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+        className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition-all disabled:cursor-not-allowed disabled:opacity-50 sm:h-7 sm:w-7 ${
           open
             ? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-primary-600 dark:bg-primary-900/30 dark:text-primary-300'
             : 'border-neutral-200/80 bg-white text-neutral-500 hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-400 dark:hover:border-primary-600 dark:hover:bg-primary-900/30 dark:hover:text-primary-300'

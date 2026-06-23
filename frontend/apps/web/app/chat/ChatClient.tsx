@@ -157,6 +157,9 @@ export function ChatClient() {
 
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Mobile-only: the conversation sidebar is an off-canvas drawer. Desktop
+  // keeps it docked in the grid, so this flag is ignored at md and up.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const [canvasMessageId, setCanvasMessageId] = useState<string | null>(null);
@@ -187,6 +190,13 @@ export function ChatClient() {
       if (canvasMessageId) return;
       if (lastAutoOpenedRef.current === m.id) return;
       if (isCanvasWorthy(m)) {
+        // On phones the canvas is a full-screen bottom sheet; auto-popping it
+        // over every long answer is intrusive. Only auto-open on desktop,
+        // where it is a side column. Mobile users open it from the message
+        // actions or the composer menu (forceCanvasNext, handled above).
+        if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
+          return;
+        }
         lastAutoOpenedRef.current = m.id;
         setCanvasMessageId(m.id);
       }
@@ -199,6 +209,9 @@ export function ChatClient() {
   useEffect(() => {
     lastAutoOpenedRef.current = null;
     setCanvasMessageId(null);
+    // Picking a conversation (or starting a new one) closes the mobile drawer
+    // so the user lands straight on the thread, the way Claude/ChatGPT do.
+    setMobileNavOpen(false);
   }, [activeId]);
 
   const closeCanvas = useCallback(() => setCanvasMessageId(null), []);
@@ -755,7 +768,7 @@ export function ChatClient() {
       <div
         aria-busy="true"
         aria-label="Loading PetroBrain"
-        className="grid min-h-screen place-items-center bg-gradient-to-b from-white via-white to-primary-50/30 dark:from-neutral-950 dark:via-neutral-950 dark:to-primary-900/20"
+        className="grid min-h-dvh place-items-center bg-gradient-to-b from-white via-white to-primary-50/30 dark:from-neutral-950 dark:via-neutral-950 dark:to-primary-900/20"
       >
         <div className="flex flex-col items-center gap-3">
           <span className="relative inline-flex h-12 w-12">
@@ -779,17 +792,46 @@ export function ChatClient() {
   return (
     <div
       className={
+        // Mobile: single column (the sidebar is a drawer rendered out of flow).
+        // md and up: the original docked-rail grid, with an optional canvas column.
         sidebarCollapsed
           ? canvasMessage
-            ? 'grid min-h-screen grid-cols-[3.5rem_minmax(0,1fr)_minmax(0,1fr)] gap-0'
-            : 'grid min-h-screen grid-cols-[3.5rem_minmax(0,1fr)] gap-0'
+            ? 'min-h-dvh md:grid md:grid-cols-[3.5rem_minmax(0,1fr)_minmax(0,1fr)] md:gap-0'
+            : 'min-h-dvh md:grid md:grid-cols-[3.5rem_minmax(0,1fr)] md:gap-0'
           : canvasMessage
-            ? 'grid min-h-screen grid-cols-[15rem_minmax(0,1fr)_minmax(0,1fr)] gap-0'
-            : 'grid min-h-screen grid-cols-[15rem_minmax(0,1fr)] gap-0'
+            ? 'min-h-dvh md:grid md:grid-cols-[15rem_minmax(0,1fr)_minmax(0,1fr)] md:gap-0'
+            : 'min-h-dvh md:grid md:grid-cols-[15rem_minmax(0,1fr)] md:gap-0'
       }
     >
-      <ChatSidebar />
-      <section className="relative flex h-screen flex-col overflow-hidden bg-gradient-to-b from-white via-white to-primary-50/20 dark:from-neutral-950 dark:via-neutral-950 dark:to-primary-900/10">
+      <ChatSidebar mobileOpen={mobileNavOpen} onMobileClose={() => setMobileNavOpen(false)} />
+      <section className="relative flex h-dvh flex-col overflow-hidden bg-gradient-to-b from-white via-white to-primary-50/20 dark:from-neutral-950 dark:via-neutral-950 dark:to-primary-900/10">
+        <header className="safe-topbar relative z-20 flex items-center gap-2 border-b border-neutral-200/60 bg-white/70 px-3 pb-2 backdrop-blur-xl md:hidden dark:border-neutral-800/60 dark:bg-neutral-900/60">
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen(true)}
+            aria-label="Open menu"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-neutral-600 transition-colors hover:bg-neutral-100 active:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-800"
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
+              <path d="M3 6h14M3 10h14M3 14h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </button>
+          <span className="min-w-0 flex-1 truncate text-center text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+            {activeConversation?.title || 'PetroBrain'}
+          </span>
+          <button
+            type="button"
+            onClick={() => ownerKey && newConversation(ownerKey, activeProject?.id ?? null)}
+            disabled={!ownerKey}
+            aria-label="New chat"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-neutral-600 transition-colors hover:bg-neutral-100 active:bg-neutral-200 disabled:opacity-40 dark:text-neutral-300 dark:hover:bg-neutral-800"
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
+              <path d="M4 13.5V16h2.5l7-7L11 6.5l-7 7z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+              <path d="M12.5 5l2.5 2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </button>
+        </header>
         <div
           aria-hidden
           className="pointer-events-none absolute -top-32 right-[-10%] h-96 w-96 rounded-full bg-primary-200/30 blur-3xl dark:bg-primary-800/20"
@@ -799,7 +841,7 @@ export function ChatClient() {
           className="pointer-events-none absolute -bottom-40 left-[-10%] h-96 w-96 rounded-full bg-primary-100/40 blur-3xl dark:bg-primary-900/20"
         />
 
-        <header className="relative z-20 flex items-center justify-between gap-4 border-b border-neutral-200/60 bg-white/60 px-7 py-3 backdrop-blur-xl dark:border-neutral-800/60 dark:bg-neutral-900/60">
+        <header className="relative z-20 hidden items-center justify-between gap-4 border-b border-neutral-200/60 bg-white/60 px-7 py-3 backdrop-blur-xl md:flex dark:border-neutral-800/60 dark:bg-neutral-900/60">
           <div className="flex items-center gap-2">
             <ModulePill />
             {activeProject ? (
@@ -955,6 +997,10 @@ export function ChatClient() {
         </div>
       </section>
       {canvasMessage ? (
+        // CanvasPanel renders both shells itself: a docked column that takes
+        // the third grid cell on desktop, and a full-height bottom sheet on
+        // mobile. The fragment is transparent, so the desktop aside still
+        // lands as the grid item here.
         <CanvasPanel message={canvasMessage} onClose={closeCanvas} />
       ) : null}
       {shareStatus.kind === 'shared' && activeConversation ? (
@@ -1031,9 +1077,9 @@ function ShareDialog({
       role="dialog"
       aria-modal="true"
       aria-labelledby="share-dialog-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-8 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/55 backdrop-blur-sm sm:items-center sm:px-4 sm:py-8"
     >
-      <div className="relative w-full max-w-[38rem] overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-[0_28px_80px_-28px_rgba(15,23,42,0.55)] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50">
+      <div className="relative max-h-[92dvh] w-full max-w-[38rem] overflow-y-auto rounded-t-2xl border border-slate-200 bg-white text-slate-950 shadow-[0_28px_80px_-28px_rgba(15,23,42,0.55)] sm:rounded-2xl dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50">
         <div className="absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b from-primary-500 via-cyan-500 to-emerald-500" />
         <div className="border-b border-slate-200 bg-slate-50/90 px-6 py-5 dark:border-slate-800 dark:bg-slate-900/80">
           <div className="flex items-start justify-between gap-4">

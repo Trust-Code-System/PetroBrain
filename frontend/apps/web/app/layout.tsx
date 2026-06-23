@@ -14,9 +14,20 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  // Base for resolving metadata-relative URLs (OG images, generated icons) at
+  // build time. Set NEXT_PUBLIC_SITE_URL in deploys; localhost is the dev/CI
+  // fallback so prerendering the generated apple-icon never sees an invalid URL.
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'),
   title: 'PetroBrain - Office',
   description: 'PetroBrain office surface for engineering and control-room staff.',
   robots: { index: false, follow: false },
+  // Lets iOS launch the installed app full-screen (no Safari chrome) when
+  // added to the home screen, matching the standalone display in manifest.ts.
+  appleWebApp: {
+    capable: true,
+    title: 'PetroBrain',
+    statusBarStyle: 'default',
+  },
   openGraph: {
     title: 'PetroBrain - Office',
     description: 'PetroBrain office surface for engineering and control-room staff.',
@@ -25,6 +36,11 @@ export const metadata: Metadata = {
 };
 
 export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  // Let the app paint into the notch / home-bar area; the shell then pads
+  // itself back out with env(safe-area-inset-*) so nothing is clipped.
+  viewportFit: 'cover' as const,
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#ffffff' },
     { media: '(prefers-color-scheme: dark)', color: '#0a0a0a' },
