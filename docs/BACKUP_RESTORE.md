@@ -31,6 +31,24 @@ one. Postgres (RDS) is the system of record; S3 holds uploaded documents.
 > An untested backup is not a backup. This drill measures the real RTO/RPO; a run that misses
 > target is a follow-up action, not a pass.
 
+Two variants depending on which database is live:
+
+- **Neon (current Render-hosted deployment)** — use the turnkey script
+  `scripts/dr_drill_neon.sh`. It branches the DB at a past point in time (Neon
+  PITR), verifies tenant/user row counts on the branch with `psycopg`, deletes
+  the branch, and prints a ready-to-paste log row. The only manual step is Neon
+  auth (`npx neonctl auth`, or `export NEON_API_KEY=...`) since it needs your
+  Neon account:
+
+  ```bash
+  npx neonctl auth            # one-time, opens your browser
+  bash scripts/dr_drill_neon.sh
+  # (NEON_PROJECT_ID=<id> bash scripts/dr_drill_neon.sh  if you have >1 project)
+  ```
+
+- **AWS RDS (after the Terraform/ECS prod stack is up)** — use the PITR
+  procedure below.
+
 ```bash
 # 1. PITR to a throwaway instance (~5 min before now).
 aws rds restore-db-instance-to-point-in-time \
