@@ -1058,7 +1058,14 @@ function ActiveProjectStrip() {
   );
 }
 
-export function ChatSidebar() {
+export function ChatSidebar({
+  mobileOpen = false,
+  onMobileClose,
+}: {
+  /** Mobile only: whether the off-canvas drawer is slid in. Ignored at md+. */
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
+} = {}) {
   const pathname = usePathname();
   const principal = useChatStore((s) => s.principal);
   const setToken = useChatStore((s) => s.setToken);
@@ -1082,10 +1089,105 @@ export function ChatSidebar() {
     newConversation(ownerKey, validProjectId);
   }
 
-  if (collapsed) return <CollapsedSidebar onExpand={() => setCollapsed(false)} onNewChat={newChat} onSignOut={signOut} />;
+  // While the mobile drawer is open: lock body scroll and close on Esc so it
+  // behaves like a native sheet rather than letting the page scroll behind it.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    function onKey(e: globalThis.KeyboardEvent) {
+      if (e.key === 'Escape') onMobileClose?.();
+    }
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [mobileOpen, onMobileClose]);
 
   return (
-    <aside className="flex h-screen min-h-0 flex-col gap-4 border-r border-neutral-200/70 bg-gradient-to-b from-white via-white to-primary-50/40 px-4 py-5 backdrop-blur-sm dark:border-neutral-800/70 dark:from-neutral-950 dark:via-neutral-950 dark:to-primary-900/20">
+    <>
+      {/* Desktop: docked rail that lives in the chat grid. Hidden on mobile. */}
+      <div className="hidden md:block">
+        {collapsed ? (
+          <CollapsedSidebar onExpand={() => setCollapsed(false)} onNewChat={newChat} onSignOut={signOut} />
+        ) : (
+          <FullSidebar
+            variant="rail"
+            pathname={pathname}
+            principal={principal}
+            newChat={newChat}
+            signOut={signOut}
+            onCollapse={() => setCollapsed(true)}
+          />
+        )}
+      </div>
+
+      {/* Mobile: off-canvas drawer with a tap-to-dismiss scrim. */}
+      <div className="md:hidden" aria-hidden={!mobileOpen}>
+        <button
+          type="button"
+          tabIndex={mobileOpen ? 0 : -1}
+          aria-label="Close menu"
+          onClick={onMobileClose}
+          className={clsx(
+            'fixed inset-0 z-40 bg-neutral-950/40 backdrop-blur-sm transition-opacity duration-200 motion-reduce:transition-none',
+            mobileOpen ? 'opacity-100' : 'pointer-events-none opacity-0',
+          )}
+        />
+        <div
+          role="dialog"
+          aria-modal={mobileOpen}
+          aria-label="Navigation and conversations"
+          className={clsx(
+            'fixed inset-y-0 left-0 z-50 w-[17rem] max-w-[85vw] shadow-2xl transition-transform duration-200 ease-out motion-reduce:transition-none',
+            mobileOpen ? 'translate-x-0' : '-translate-x-full',
+          )}
+        >
+          <FullSidebar
+            variant="drawer"
+            pathname={pathname}
+            principal={principal}
+            newChat={newChat}
+            signOut={signOut}
+            onClose={onMobileClose}
+          />
+        </div>
+      </div>
+    </>
+  );
+}
+
+/**
+ * The expanded sidebar body, shared by the desktop docked rail and the
+ * mobile drawer. ``variant`` only changes the chrome: the rail shows a
+ * collapse control, the drawer shows a close (X) control and pads itself
+ * for the device safe-area.
+ */
+function FullSidebar({
+  variant,
+  pathname,
+  principal,
+  newChat,
+  signOut,
+  onCollapse,
+  onClose,
+}: {
+  variant: 'rail' | 'drawer';
+  pathname: string | null;
+  principal: Principal | null;
+  newChat: () => void;
+  signOut: () => void;
+  onCollapse?: () => void;
+  onClose?: (() => void) | undefined;
+}) {
+  return (
+    <aside
+      className={clsx(
+        'flex h-dvh min-h-0 flex-col gap-4 border-r border-neutral-200/70 bg-gradient-to-b from-white via-white to-primary-50/40 px-4 backdrop-blur-sm dark:border-neutral-800/70 dark:from-neutral-950 dark:via-neutral-950 dark:to-primary-900/20',
+        variant === 'drawer' ? 'safe-drawer' : 'py-5',
+      )}
+    >
       <header className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2.5">
           <Logo size={32} glow />
@@ -1097,18 +1199,32 @@ export function ChatSidebar() {
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setCollapsed(true)}
-            aria-label="Collapse sidebar"
-            title="Collapse sidebar"
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200/70 bg-white/80 text-neutral-500 transition-all hover:border-primary-300 hover:bg-white hover:text-primary-700 dark:border-neutral-800/70 dark:bg-neutral-900/70 dark:text-neutral-400 dark:hover:border-primary-600 dark:hover:bg-neutral-900 dark:hover:text-primary-300"
-          >
-            <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden>
-              <rect x="3" y="4" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
-              <path d="M8 4v12" stroke="currentColor" strokeWidth="1.5" />
-            </svg>
-          </button>
+          {variant === 'drawer' ? (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close menu"
+              title="Close menu"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200/70 bg-white/80 text-neutral-500 transition-all hover:border-primary-300 hover:bg-white hover:text-primary-700 dark:border-neutral-800/70 dark:bg-neutral-900/70 dark:text-neutral-400 dark:hover:border-primary-600 dark:hover:bg-neutral-900 dark:hover:text-primary-300"
+            >
+              <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden>
+                <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onCollapse}
+              aria-label="Collapse sidebar"
+              title="Collapse sidebar"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200/70 bg-white/80 text-neutral-500 transition-all hover:border-primary-300 hover:bg-white hover:text-primary-700 dark:border-neutral-800/70 dark:bg-neutral-900/70 dark:text-neutral-400 dark:hover:border-primary-600 dark:hover:bg-neutral-900 dark:hover:text-primary-300"
+            >
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden>
+                <rect x="3" y="4" width="14" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M8 4v12" stroke="currentColor" strokeWidth="1.5" />
+              </svg>
+            </button>
+          )}
           <button
             type="button"
             onClick={newChat}
@@ -1184,7 +1300,7 @@ function CollapsedSidebar({
   const initials = accountLabel.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || 'PB';
 
   return (
-    <aside className="flex h-screen min-h-0 flex-col items-center gap-1 border-r border-neutral-200/70 bg-gradient-to-b from-white via-white to-primary-50/40 px-2 py-4 backdrop-blur-sm dark:border-neutral-800/70 dark:from-neutral-950 dark:via-neutral-950 dark:to-primary-900/20">
+    <aside className="flex h-dvh min-h-0 flex-col items-center gap-1 border-r border-neutral-200/70 bg-gradient-to-b from-white via-white to-primary-50/40 px-2 py-4 backdrop-blur-sm dark:border-neutral-800/70 dark:from-neutral-950 dark:via-neutral-950 dark:to-primary-900/20">
       <button
         type="button"
         onClick={onExpand}
