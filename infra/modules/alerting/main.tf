@@ -166,6 +166,42 @@ resource "aws_cloudwatch_metric_alarm" "audit_security_event" {
   tags = var.tags
 }
 
+# The app emits a greppable "audit_write_failed" ERROR to stdout when a durable
+# audit append raises (DB down / permission denied) or the off-host CloudWatch
+# copy fails (see app/core/audit_sink.py). That means actions may be happening
+# without being recorded - page immediately. Same filter+alarm shape as
+# audit_security_event above.
+resource "aws_cloudwatch_log_metric_filter" "audit_write_failed" {
+  name           = "${var.name}-audit-write-failed"
+  log_group_name = var.api_log_group
+  pattern        = "audit_write_failed"
+
+  metric_transformation {
+    name          = "AuditWriteFailures"
+    namespace     = "PetroBrain/${var.name}"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "audit_write_failed" {
+  alarm_name          = "${var.name}-audit-write-failed"
+  alarm_description   = "An audit write failed (durable append or off-host copy) - actions may be unrecorded. Investigate immediately."
+  namespace           = "PetroBrain/${var.name}"
+  metric_name         = "AuditWriteFailures"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = local.actions
+  # No ok_actions: a write failure is a point-in-time signal, not a sustained
+  # state, so an "OK" transition would just be noise.
+  tags = var.tags
+}
+
 # --- Compute tier -------------------------------------------------------------
 
 resource "aws_cloudwatch_metric_alarm" "ecs_cpu" {

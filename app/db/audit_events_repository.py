@@ -20,6 +20,7 @@ from threading import Lock
 from typing import Any
 
 from app.config import get_settings
+from app.core.audit_sink import emit_audit_row, note_audit_write_failed
 
 logger = logging.getLogger(__name__)
 
@@ -115,9 +116,17 @@ class LocalJsonAuditEventsRepository:
                 usage=dict(usage or {}),
             )
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            with self.path.open("a", encoding="utf-8") as f:
-                f.write(json.dumps(row.as_dict(), sort_keys=True) + "\n")
+            try:
+                with self.path.open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(row.as_dict(), sort_keys=True) + "\n")
+            except Exception:
+                note_audit_write_failed(
+                    reason="durable_append_failed",
+                    tenant_id=tenant_id, user_id=user_id, action=action,
+                )
+                raise
         _emit_security_signal(row)
+        emit_audit_row(row.as_dict())
         return row
 
     def query(
@@ -232,19 +241,27 @@ class PostgresAuditEventsRepository:
             raise ValueError("response_hash must be a string (empty allowed on error)")
         from psycopg.types.json import Json
 
-        with self._tenant_conn(tenant_id) as conn:
-            row = conn.execute(
-                f"INSERT INTO audit_events "
-                f"(ts, tenant_id, user_id, role, action, module, request_hash, "
-                f" response_hash, retrieved_clauses, flags, usage) "
-                f"VALUES (COALESCE(%s, now()), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
-                f"RETURNING {_AUDIT_COLUMNS}",
-                (ts, tenant_id, user_id, role, action, module, request_hash,
-                 response_hash, Json(list(retrieved_clauses or [])),
-                 Json(list(flags or [])), Json(dict(usage or {}))),
-            ).fetchone()
+        try:
+            with self._tenant_conn(tenant_id) as conn:
+                row = conn.execute(
+                    f"INSERT INTO audit_events "
+                    f"(ts, tenant_id, user_id, role, action, module, request_hash, "
+                    f" response_hash, retrieved_clauses, flags, usage) "
+                    f"VALUES (COALESCE(%s, now()), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                    f"RETURNING {_AUDIT_COLUMNS}",
+                    (ts, tenant_id, user_id, role, action, module, request_hash,
+                     response_hash, Json(list(retrieved_clauses or [])),
+                     Json(list(flags or [])), Json(dict(usage or {}))),
+                ).fetchone()
+        except Exception:
+            note_audit_write_failed(
+                reason="durable_append_failed",
+                tenant_id=tenant_id, user_id=user_id, action=action,
+            )
+            raise
         event = _row_to_event(row)
         _emit_security_signal(event)
+        emit_audit_row(event.as_dict())
         return event
 
     def query(
