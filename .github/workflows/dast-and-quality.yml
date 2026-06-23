@@ -1,0 +1,71 @@
+name: DAST & quality (staging)
+
+# Live-target checks (Lighthouse, pa11y, OWASP ZAP). These hit a RUNNING
+# deployment, so they are intentionally NOT on the PR path - they run on manual
+# dispatch and on a weekly schedule against the staging URL. Configure the repo
+# secret STAGING_URL (e.g. https://staging.petrobrain.xyz) before enabling.
+#
+# Nothing here is merge-blocking; it is a monitoring/triage surface. Promote any
+# step to a gate once budgets and the ZAP rules file are baselined.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  lighthouse:
+    name: lighthouse (perf/seo/a11y/best-practices)
+    runs-on: ubuntu-latest
+    if: ${{ vars.STAGING_URL != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install -g @lhci/cli@0.14.x
+      - name: Lighthouse autorun (public entry route)
+        run: |
+          lhci autorun \
+            --collect.url="${{ vars.STAGING_URL }}/signin" \
+            --collect.numberOfRuns=2 \
+            --upload.target=temporary-public-storage || true
+
+  pa11y:
+    name: pa11y (accessibility)
+    runs-on: ubuntu-latest
+    if: ${{ vars.STAGING_URL != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install -g pa11y-ci@3
+      - name: pa11y public routes
+        run: |
+          pa11y-ci \
+            "${{ vars.STAGING_URL }}/signin" \
+            "${{ vars.STAGING_URL }}/signup" || true
+
+  zap-baseline:
+    name: OWASP ZAP baseline
+    runs-on: ubuntu-latest
+    if: ${{ vars.STAGING_URL != '' }}
+    permissions:
+      contents: read
+      issues: write # ZAP action can open an issue with findings
+    steps:
+      - uses: actions/checkout@v4
+      - name: ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: ${{ vars.STAGING_URL }}
+          # Passive baseline scan only (no active attack payloads), safe against
+          # a real staging host. Tune .zap/rules.tsv to triage known findings.
+          rules_file_name: .zap/rules.tsv
+          cmd_options: "-a"
+          allow_issue_writing: true
+          fail_action: false

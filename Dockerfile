@@ -10,6 +10,15 @@ COPY requirements.txt requirements-tierb.txt ./
 RUN pip install --no-cache-dir -r ${PIP_REQUIREMENTS}
 
 COPY app ./app
+
+# Run as an unprivileged user so a container escape / RCE does not land as root.
+# The reranker cache (PB_RERANK_CACHE_DIR=/var/cache/petrobrain) and the working
+# dir must be writable by that uid; /tmp (demo audit log path) already is.
+RUN useradd --create-home --uid 10001 appuser \
+    && mkdir -p /var/cache/petrobrain \
+    && chown -R appuser:appuser /var/cache/petrobrain /srv
+USER appuser
+
 EXPOSE 8000
 # In postgres mode, production runs idempotent schema + migrations (IF NOT
 # EXISTS) before starting uvicorn so a fresh database self-bootstraps with no
