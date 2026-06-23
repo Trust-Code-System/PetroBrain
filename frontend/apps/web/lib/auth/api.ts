@@ -15,6 +15,9 @@ export interface AuthPrincipalPayload {
 
 export interface AuthResponse {
   token: string;
+  // Long-lived, single-use. Exchanged at /auth/refresh for a new access token
+  // (and a new refresh token) when the short-lived access token nears expiry.
+  refresh_token: string;
   principal: AuthPrincipalPayload;
   onboarding_required?: boolean;
 }
@@ -75,4 +78,33 @@ export function signin(
   signal?: AbortSignal,
 ): Promise<AuthResponse> {
   return postAuth(baseUrl, '/auth/signin', body, signal);
+}
+
+/**
+ * Exchange a refresh token for a fresh access + refresh pair. Throws AuthError
+ * on a 401 (token used/expired/revoked) so the caller can drop the session and
+ * route the user to sign in.
+ */
+export async function refreshSession(
+  baseUrl: string,
+  refreshToken: string,
+  signal?: AbortSignal,
+): Promise<AuthResponse> {
+  const res = await fetch(`${baseUrl}/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+    ...(signal ? { signal } : {}),
+  });
+  if (res.ok) {
+    return (await res.json()) as AuthResponse;
+  }
+  let detail = `${res.status} ${res.statusText}`;
+  try {
+    const data = (await res.json()) as AuthErrorBody;
+    if (data && typeof data.detail === 'string') detail = data.detail;
+  } catch {
+    // non-JSON body; keep the status-line fallback
+  }
+  throw new AuthError(detail, res.status);
 }

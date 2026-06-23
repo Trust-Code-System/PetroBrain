@@ -75,7 +75,7 @@ def add_security_headers(response: Response) -> Response:
 def rate_limit_key(request: Request, settings: Settings) -> tuple[str, int] | None:
     path = request.url.path
     method = request.method.upper()
-    if path in {"/auth/signup", "/auth/signin"} and method == "POST":
+    if path in {"/auth/signup", "/auth/signin", "/auth/refresh"} and method == "POST":
         # Auth routes are always IP-keyed: a credential-stuffing attacker isn't
         # carrying a valid JWT, so principal-based keying would do nothing.
         return (

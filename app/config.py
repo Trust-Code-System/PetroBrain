@@ -164,6 +164,17 @@ class Settings(BaseSettings):
     # Server-side revocation store. "memory" = per-process set (dev/tests),
     # "redis" = shared across replicas (prod). Empty = auto by environment.
     jwt_revocation_backend: str = ""
+    # Refresh tokens. The access token above stays short (jwt_ttl_hours); a
+    # longer-lived, single-use, server-stored refresh token lets the client mint
+    # a new access token via POST /auth/refresh without re-entering credentials.
+    # Rotated on every use (the old token is consumed), so a replayed/stolen
+    # refresh token fails once the legitimate client has refreshed.
+    refresh_token_ttl_days: int = 14
+    # Store backend, same semantics as jwt_revocation_backend. Empty = auto
+    # (redis in prod, memory otherwise). Memory is per-process: fine for dev and
+    # the ephemeral demo, not for multi-replica prod (the validator forces redis
+    # there via the rediss:// requirement).
+    refresh_token_backend: str = ""
     # Self-serve signup (POST /auth/signup). Disable to lock the app to
     # admin-invited accounts only.
     enable_self_signup: bool = True

@@ -2,6 +2,11 @@ output "db_endpoint" {
   value = aws_db_instance.this.address
 }
 
+output "db_instance_id" {
+  description = "RDS DBInstanceIdentifier, for CloudWatch alarm dimensions."
+  value       = aws_db_instance.this.identifier
+}
+
 output "db_url_secret_arn" {
   value = aws_secretsmanager_secret.db_url.arn
 }

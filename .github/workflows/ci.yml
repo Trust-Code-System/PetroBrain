@@ -63,11 +63,12 @@ jobs:
         # PB_TEST_DATABASE_URL activates the gated Postgres integration tests
         # (skipped locally when unset). Admin/superuser DSN; the tests create a
         # NOSUPERUSER role so RLS is exercised.
-        # --cov-fail-under is deliberately omitted until we baseline (M7);
-        # tightening to a real threshold is a Phase-2 follow-up.
+        # Coverage floor baselined at 75% (2026-06; local no-DB run), gated at 70%
+        # for headroom. With the Postgres tests on in CI the real number is higher.
+        # Ratchet the floor up as coverage grows; never lower it to make CI pass.
         env:
           PB_TEST_DATABASE_URL: postgresql://petrobrain:petrobrain@localhost:5432/petrobrain
-        run: pytest tests/ -q --cov=app --cov-report=term --cov-report=xml
+        run: pytest tests/ -q --cov=app --cov-report=term --cov-report=xml --cov-fail-under=70
 
       - name: Upload coverage artifact
         if: always()
@@ -109,11 +110,23 @@ jobs:
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
+      - name: Lint
+        run: pnpm -r lint
+
       - name: Typecheck
         run: pnpm -r typecheck
 
       - name: Test
         run: pnpm -r test
+
+      # Dependency audit. Informational, not merge-blocking: this monorepo also
+      # contains the Expo/React-Native `field` app and dev/test tooling (vitest,
+      # storybook, happy-dom), whose deep transitive trees carry advisories that
+      # cannot all be resolved without major SDK bumps and are NOT in the deployed
+      # web/admin runtime. The job surfaces new findings; triage them in the PR.
+      # The one production web CVE that mattered (Next.js DoS) is pinned-fixed.
+      - name: Dependency audit (informational)
+        run: pnpm audit --prod --audit-level high || true
 
       - name: Build
         run: pnpm -r build

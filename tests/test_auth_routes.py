@@ -25,6 +25,7 @@ def _auth_settings(**overrides):
         "jwt_issuer": JWT_ISSUER,
         "jwt_audience": JWT_AUDIENCE,
         "jwt_ttl_hours": 1,
+        "refresh_token_ttl_days": 14,
         "enable_self_signup": True,
         "default_signup_tenant_id": "demo",
         "default_signup_tenant_name": "Demo",
@@ -57,6 +58,10 @@ def wire(monkeypatch, tenants_repo, users_repo):
     # consecutive-failure counts across tests.
     from app.core import auth_lockout
     auth_lockout.reset_for_tests()
+    # The IP-keyed auth rate limiter is a process-global singleton shared across
+    # the auth test files; clear it so accumulated signups don't 429 a later test.
+    from app.core.http_hardening import clear_rate_limits
+    clear_rate_limits()
 
 
 def test_signup_provisions_isolated_individual_workspace_and_returns_jwt(tenants_repo, users_repo):

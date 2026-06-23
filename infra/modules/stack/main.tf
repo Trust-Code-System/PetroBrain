@@ -126,3 +126,15 @@ module "compute" {
   # The ALB listener must exist before the service registers into the TG.
   depends_on = [module.edge]
 }
+
+module "alerting" {
+  source                  = "../alerting"
+  name                    = local.name
+  alert_email             = var.alert_email
+  alb_arn_suffix          = module.edge.alb_arn_suffix
+  target_group_arn_suffix = module.edge.target_group_arn_suffix
+  db_instance_id          = module.data.db_instance_id
+  ecs_cluster_name        = module.compute.cluster_name
+  ecs_service_name        = module.compute.api_service_name
+  tags                    = local.tags
+}

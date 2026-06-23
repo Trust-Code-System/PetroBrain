@@ -1,0 +1,8 @@
+# OWASP ZAP Baseline rule tuning. Tab-separated: <ruleId>\t<action>\t<url-regex (optional)>\t<comment>
+# action = WARN (report, don't fail) | FAIL (fail the build) | IGNORE (suppress).
+# Baseline ships everything as WARN via the workflow; promote specific rules to
+# FAIL here once the staging app is clean for them. Examples (commented out):
+#
+# 10038	FAIL	.*	Content-Security-Policy header missing (we now set it - gate it)
+# 10035	FAIL	.*	Strict-Transport-Security header missing
+# 10063	IGNORE	.*	Permissions-Policy: triage if a third-party embed needs an exception

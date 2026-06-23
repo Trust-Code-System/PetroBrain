@@ -200,6 +200,16 @@ output "target_group_arn" {
   value = aws_lb_target_group.this.arn
 }
 
+# CloudWatch metric dimensions for ApplicationELB use the ARN *suffix*, not the
+# full ARN. Exposed for the alerting module.
+output "alb_arn_suffix" {
+  value = aws_lb.this.arn_suffix
+}
+
+output "target_group_arn_suffix" {
+  value = aws_lb_target_group.this.arn_suffix
+}
+
 output "http_listener_arn" {
   value = aws_lb_listener.http.arn
 }
