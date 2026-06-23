@@ -136,5 +136,6 @@ module "alerting" {
   db_instance_id          = module.data.db_instance_id
   ecs_cluster_name        = module.compute.cluster_name
   ecs_service_name        = module.compute.api_service_name
+  api_log_group           = module.observability.api_log_group
   tags                    = local.tags
 }
