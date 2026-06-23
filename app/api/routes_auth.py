@@ -28,6 +28,7 @@ from app.config import get_settings
 from app.core.audit import AuditEvent, get_audit_logger
 from app.core import auth_lockout
 from app.core.auth import hash_password, mint_jwt, verify_password
+from app.core import refresh_tokens
 from app.core.token_revocation import revoke as revoke_jti
 from app.db.tenants_repository import get_tenants_repository
 from app.db.users_repository import get_users_repository
@@ -89,8 +90,22 @@ class AuthPrincipal(BaseModel):
 
 class AuthResponse(BaseModel):
     token: str
+    # Long-lived, single-use, server-stored. The client calls POST /auth/refresh
+    # with this to mint a new access token (and a new refresh token) when the
+    # short-lived access token expires, instead of re-entering credentials.
+    refresh_token: str
     principal: AuthPrincipal
     onboarding_required: bool = False
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(min_length=1)
+
+
+class LogoutRequest(BaseModel):
+    # Optional: when present, the refresh token is revoked too so the session
+    # cannot be continued after logout.
+    refresh_token: str | None = None
 
 
 class CurrentPrincipal(BaseModel):
@@ -154,6 +169,15 @@ def _mint_for(record: dict) -> str:
         issuer=settings.jwt_issuer,
         audience=settings.jwt_audience,
         ttl=timedelta(hours=settings.jwt_ttl_hours),
+    )
+
+
+def _issue_refresh(record: dict) -> str:
+    settings = get_settings()
+    return refresh_tokens.issue(
+        user_id=record["id"],
+        tenant_id=record["tenant_id"],
+        ttl_seconds=settings.refresh_token_ttl_days * 24 * 60 * 60,
     )
 
 
@@ -244,6 +268,7 @@ async def signup(req: SignupRequest) -> AuthResponse:
         raise
 
     token = _mint_for(record)
+    refresh_token = _issue_refresh(record)
     audit_logger.write(AuditEvent(
         event_type="auth_signup",
         tenant_id=record["tenant_id"],
@@ -257,6 +282,7 @@ async def signup(req: SignupRequest) -> AuthResponse:
     # A freshly provisioned workspace always needs onboarding.
     return AuthResponse(
         token=token,
+        refresh_token=refresh_token,
         principal=_to_principal_payload(record),
         onboarding_required=True,
     )
@@ -300,6 +326,7 @@ async def signin(req: SigninRequest) -> AuthResponse:
         pass
 
     token = _mint_for(record)
+    refresh_token = _issue_refresh(record)
     audit_logger.write(AuditEvent(
         event_type="auth_signin",
         tenant_id=record["tenant_id"],
@@ -317,22 +344,80 @@ async def signin(req: SigninRequest) -> AuthResponse:
     )
     return AuthResponse(
         token=token,
+        refresh_token=refresh_token,
         principal=_to_principal_payload(record),
         onboarding_required=onboarding_required,
+    )
+
+
+@router.post("/refresh", response_model=AuthResponse)
+async def refresh(req: RefreshRequest) -> AuthResponse:
+    """Exchange a valid refresh token for a new access token + a new refresh
+    token (rotation). No password and no access token are required - the refresh
+    token itself is the credential.
+
+    Security properties:
+      * The presented refresh token is consumed atomically (single use); a replay
+        of a token that has already been rotated past fails with 401.
+      * The user is re-read from the store on every refresh, so a deactivated
+        account or a changed role/asset scope takes effect immediately and a
+        deactivated user can never refresh.
+      * The same opaque 401 is returned for unknown/expired/used tokens and for
+        missing/inactive users so nothing is leaked to the caller.
+    """
+    invalid = HTTPException(status_code=401, detail="invalid refresh token")
+    record_ref = refresh_tokens.consume(req.refresh_token)
+    if record_ref is None:
+        raise invalid
+
+    users = get_users_repository()
+    record = users.get(tenant_id=record_ref.tenant_id, user_id=record_ref.user_id)
+    if record is None or record.get("status") != "active":
+        # The refresh token was already consumed above, so an inactive user is now
+        # fully logged out and must re-authenticate.
+        raise invalid
+
+    token = _mint_for(record)
+    new_refresh = _issue_refresh(record)
+    try:
+        users.touch_last_active(tenant_id=record["tenant_id"], user_id=record["id"])
+    except Exception:
+        pass
+    audit_logger.write(AuditEvent(
+        event_type="auth_refresh",
+        tenant_id=record["tenant_id"],
+        user_id=record["id"],
+        role=record["role"],
+        route="/auth/refresh",
+        request={"user_id": record["id"]},
+        response={"user_id": record["id"]},
+        metadata={},
+    ))
+    return AuthResponse(
+        token=token,
+        refresh_token=new_refresh,
+        principal=_to_principal_payload(record),
+        onboarding_required=False,
     )
 
 
 @router.post("/logout", status_code=204)
 async def logout(
     authorization: str = Header(default=""),
+    body: LogoutRequest | None = None,
     who: Principal = Depends(get_principal),
 ):
     """Revoke the current access token's ``jti`` so it stops being accepted
-    immediately, without waiting for ``exp``. Idempotent: replays do nothing.
+    immediately, without waiting for ``exp``. If a refresh token is supplied in
+    the body it is revoked too, so the session cannot be continued. Idempotent:
+    replays do nothing.
 
-    Frontend must drop its locally-stored token after a 204 response - the
-    server stops honouring it on the next request either way.
+    Frontend must drop its locally-stored tokens after a 204 response - the
+    server stops honouring them on the next request either way.
     """
+    if body is not None and body.refresh_token:
+        refresh_tokens.revoke(body.refresh_token)
+
     import jwt as _jwt
     _, _, token = (authorization or "").partition(" ")
     if not token:
