@@ -47,3 +47,8 @@ output "app_secret_arns" {
   description = "App secrets to populate out-of-band (see RUNBOOK)."
   value       = module.secrets.secret_arns
 }
+
+output "alarms_sns_topic_arn" {
+  description = "CloudWatch alarm SNS topic; subscribe PagerDuty/Opsgenie/Slack for on-call."
+  value       = module.alerting.sns_topic_arn
+}

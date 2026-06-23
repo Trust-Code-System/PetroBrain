@@ -18,6 +18,7 @@ module "stack" {
   bucket_name        = var.bucket_name
   certificate_arn    = var.certificate_arn
   cors_allow_origins = var.cors_allow_origins
+  alert_email        = var.alert_email
 
   # Prod posture: multi-AZ, deletion protection, longer retention, HTTPS.
   single_nat_gateway               = false

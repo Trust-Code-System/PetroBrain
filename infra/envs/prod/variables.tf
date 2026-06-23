@@ -18,6 +18,12 @@ variable "certificate_arn" {
   type        = string
 }
 
+variable "alert_email" {
+  description = "Email subscribed to the CloudWatch alarm SNS topic. Leave empty to create the topic + alarms without a subscription and wire PagerDuty/Slack to the topic ARN out of band."
+  type        = string
+  default     = ""
+}
+
 variable "cors_allow_origins" {
   description = "Comma-separated production web/admin origins, e.g. https://app.example.com,https://admin.example.com."
   type        = string

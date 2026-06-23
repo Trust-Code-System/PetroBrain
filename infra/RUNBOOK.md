@@ -228,3 +228,27 @@ filesystem check at container start.
   `PetroBrain`. Container Insights is on for the cluster.
 - App `/metrics` (Prometheus) is also exposed on the API task if you add a
   scraper; OTLP export goes to the sidecar at `localhost:4317`.
+
+### Alerting (modules/alerting)
+
+CloudWatch alarms publish to one SNS topic (`stack` output `alarms_sns_topic_arn`)
+on both ALARM and OK. Set `alert_email` in the env root to get email, and/or
+subscribe PagerDuty/Opsgenie/Slack to the topic ARN for on-call.
+
+| Alarm | Fires when | Meaning |
+| --- | --- | --- |
+| `*-no-healthy-hosts` | HealthyHostCount < 1 for 3 min | API effectively down (page) |
+| `*-alb-5xx` | ELB 5xx > threshold / 5 min | LB / no-target failures |
+| `*-target-5xx` | app 5xx > threshold / 5 min | application errors |
+| `*-latency-p95` | p95 TargetResponseTime over budget | slowness |
+| `*-rds-cpu-high` / `*-rds-free-storage-low` | RDS saturation / disk floor | DB risk |
+| `*-ecs-api-cpu-high` | API service CPU sustained high | scale up / investigate |
+
+Tune thresholds via the `*_threshold` / `*_percent` / `*_bytes` vars on the
+`alerting` module against the first weeks of real traffic.
+
+> **Rate limiter is fail-open.** The app-layer limiter
+> (`app/core/http_hardening.py`) permits the request if Redis is unreachable, so a
+> Redis incident degrades abuse protection but does not take auth down. The WAF
+> `rate_based_statement` on the ALB (`modules/edge`) is the independent backstop;
+> keep it enabled. To fail _closed_ instead, change `_RedisBackend.over_limit`.

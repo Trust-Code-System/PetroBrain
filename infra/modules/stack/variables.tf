@@ -150,3 +150,9 @@ variable "extra_environment" {
   type        = map(string)
   default     = {}
 }
+
+variable "alert_email" {
+  description = "Email subscribed to the CloudWatch alarm SNS topic. Empty = topic + alarms created but no subscription (wire PagerDuty/Slack to the topic ARN output)."
+  type        = string
+  default     = ""
+}
