@@ -700,7 +700,7 @@ function ErrorsSection({
   return (
     <Card
       title="User-visible errors"
-      description="Latest failed user actions reported by the app. Prompts and raw chat text are not stored here."
+      description="Failures your users hit, captured automatically across the app (plus any the UI reports). Shows the message the user saw and the underlying error. Prompts and raw chat text are not stored here."
     >
       {error && !(error instanceof SessionExpiredError) ? (
         <Banner tone="danger" title="Failed to load errors">
@@ -726,6 +726,11 @@ function ErrorsSection({
 
 function ErrorRowItem({ row }: { row: ErrorEventRow }) {
   const when = safeDate(row.created_utc);
+  // The server-side detail (exception type + underlying error) the user is
+  // shielded from but the admin needs to diagnose. Present only on
+  // automatically-captured rows; frontend-reported rows omit it.
+  const detail =
+    typeof row.metadata?.error_detail === 'string' ? row.metadata.error_detail : '';
   return (
     <article className="flex flex-col gap-2 py-3 md:flex-row md:items-start md:justify-between">
       <div className="min-w-0 space-y-1">
@@ -743,6 +748,11 @@ function ErrorRowItem({ row }: { row: ErrorEventRow }) {
         <p className="break-words text-sm text-neutral-800 dark:text-neutral-100">
           {row.message}
         </p>
+        {detail ? (
+          <p className="break-words font-mono text-xs text-neutral-500 dark:text-neutral-400">
+            {detail}
+          </p>
+        ) : null}
       </div>
       <div className="shrink-0 text-xs text-neutral-500 dark:text-neutral-400 md:text-right">
         <p className="font-medium">{row.role}</p>
