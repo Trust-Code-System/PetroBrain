@@ -34,6 +34,17 @@ variable "api_log_group" {
   type        = string
 }
 
+variable "worker_log_group" {
+  description = "CloudWatch log group for the Celery worker container. Embedding failures during document ingestion land here (retrieval failures land in the API group), so both are scanned for embedding_provider_failed."
+  type        = string
+}
+
+variable "embedding_failure_threshold" {
+  description = "embedding_provider_failed occurrences per 5 min before alarming. Default tolerates a transient blip but pages on a sustained outage (e.g. provider out of quota)."
+  type        = number
+  default     = 5
+}
+
 # Thresholds. Defaults are conservative starting points; tune against the first
 # weeks of real traffic in the env root.
 variable "alb_5xx_threshold" {

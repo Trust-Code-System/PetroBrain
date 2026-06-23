@@ -143,5 +143,6 @@ module "alerting" {
   ecs_cluster_name        = module.compute.cluster_name
   ecs_service_name        = module.compute.api_service_name
   api_log_group           = module.observability.api_log_group
+  worker_log_group        = module.observability.worker_log_group
   tags                    = local.tags
 }

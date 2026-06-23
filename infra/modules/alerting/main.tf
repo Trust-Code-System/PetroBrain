@@ -202,6 +202,60 @@ resource "aws_cloudwatch_metric_alarm" "audit_write_failed" {
   tags = var.tags
 }
 
+# --- Embeddings / provider ----------------------------------------------------
+# The app logs a greppable "embedding_provider_failed" WARNING whenever an
+# embedding-provider call fails (see app/rag/embeddings.py). The raw cause - most
+# often an OpenAI 429 "insufficient_quota" - is sanitized before it reaches users,
+# so without this alarm a quota exhaustion is invisible until someone notices that
+# document ingestion and RAG retrieval have quietly stopped working. Ingestion
+# runs in the worker and retrieval in the API, so we scan BOTH log groups into one
+# metric.
+resource "aws_cloudwatch_log_metric_filter" "embedding_provider_failed_api" {
+  name           = "${var.name}-embedding-provider-failed-api"
+  log_group_name = var.api_log_group
+  pattern        = "embedding_provider_failed"
+
+  metric_transformation {
+    name          = "EmbeddingProviderFailures"
+    namespace     = "PetroBrain/${var.name}"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "embedding_provider_failed_worker" {
+  name           = "${var.name}-embedding-provider-failed-worker"
+  log_group_name = var.worker_log_group
+  pattern        = "embedding_provider_failed"
+
+  metric_transformation {
+    name          = "EmbeddingProviderFailures"
+    namespace     = "PetroBrain/${var.name}"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "embedding_provider_failed" {
+  alarm_name          = "${var.name}-embedding-provider-failed"
+  alarm_description   = "Embedding provider failing (e.g. out of quota) - document ingestion and RAG retrieval are degraded. Check the provider key/billing or fail over to self-hosted embeddings."
+  namespace           = "PetroBrain/${var.name}"
+  metric_name         = "EmbeddingProviderFailures"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = var.embedding_failure_threshold
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = local.actions
+  # ok_actions here is useful: recovery (key topped up / failover) is a real,
+  # sustained state transition worth telling on-call about.
+  ok_actions = local.actions
+  tags       = var.tags
+}
+
 # --- Compute tier -------------------------------------------------------------
 
 resource "aws_cloudwatch_metric_alarm" "ecs_cpu" {
