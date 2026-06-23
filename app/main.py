@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api import (
     routes_account,
@@ -38,6 +39,7 @@ from app.config import (
     validate_production_settings,
     warn_on_degraded_embeddings,
 )
+from app.core.error_capture import error_capture_middleware, stash_http_detail
 from app.core.http_hardening import (
     add_security_headers,
     check_rate_limit,
@@ -98,6 +100,18 @@ async def hardening_middleware(request: Request, call_next):
             )
     response = await call_next(request)
     return add_security_headers(response)
+
+
+# Registered AFTER hardening so it wraps it (outermost user middleware): it
+# observes the final status / any unhandled exception and files a row into the
+# per-tenant error feed so the admin sees every failure a user hits. Best-effort;
+# never alters the response. See app/core/error_capture.py.
+app.middleware("http")(error_capture_middleware)
+
+# Stash HTTPException detail on request.state so the capture middleware can
+# record the reason the user saw (the streaming response it gets has no body).
+# Delegates to the framework default, so error responses are unchanged.
+app.add_exception_handler(StarletteHTTPException, stash_http_detail)
 
 app.include_router(routes_auth.router)
 app.include_router(routes_chat.router)

@@ -101,6 +101,13 @@ class Settings(BaseSettings):
     # --- Retrieval re-ranking (slice 3 of the learning loop) ----------------
     chunk_weight_store_path: str = "data/tenant_chunk_weights.jsonl"
     error_events_store_path: str = "data/error_events.jsonl"
+    # Server-side automatic error capture: record every qualifying failure an
+    # authenticated user hits (5xx + unhandled exceptions + genuine 4xx; routine
+    # 401/404/422 are skipped) into the per-tenant error feed, so the admin sees
+    # it without the frontend having to report it. In-process dedupe collapses a
+    # storm of identical errors within the window to one row.
+    error_capture_enabled: bool = True
+    error_capture_dedupe_seconds: int = 60
     # Bounds on the multiplicative weight applied to fused scores. Floor is
     # the load-bearing safety guarantee: even a chunk that has accumulated
     # heavy negative feedback only loses 50% of its score and still surfaces.
