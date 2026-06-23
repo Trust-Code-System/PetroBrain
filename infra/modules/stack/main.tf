@@ -30,6 +30,11 @@ locals {
     PB_MALWARE_SCAN_FAIL_CLOSED    = "true"
     PB_MALWARE_SCAN_HOST           = "127.0.0.1"
     PB_MALWARE_SCAN_PORT           = "3310"
+    # Off-host immutable audit copy (Option A). On in cloud; the Render demo
+    # leaves the flag at its default (off).
+    PB_AUDIT_CLOUDWATCH_ENABLED   = "true"
+    PB_AUDIT_CLOUDWATCH_LOG_GROUP = module.observability.audit_log_group
+    PB_AUDIT_CLOUDWATCH_REGION    = var.region
   }, var.extra_environment)
 
   app_secrets = {
@@ -115,6 +120,7 @@ module "compute" {
   otel_log_group        = module.observability.otel_log_group
   target_group_arn      = module.edge.target_group_arn
   bucket_arn            = module.data.bucket_arn
+  audit_log_group_arn   = module.observability.audit_log_group_arn
   api_cpu               = var.api_cpu
   api_memory            = var.api_memory
   worker_cpu            = var.worker_cpu

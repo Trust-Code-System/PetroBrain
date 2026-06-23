@@ -16,6 +16,12 @@ variable "log_retention_days" {
   default = 30
 }
 
+variable "audit_log_retention_days" {
+  description = "Retention for the off-host immutable audit copy. Long by default so the durable audit trail outlives operational logs."
+  type        = number
+  default     = 400
+}
+
 variable "tags" {
   type    = map(string)
   default = {}
@@ -36,6 +42,16 @@ resource "aws_cloudwatch_log_group" "worker" {
 resource "aws_cloudwatch_log_group" "otel" {
   name              = "/petrobrain/${var.name}/otel-collector"
   retention_in_days = var.log_retention_days
+  tags              = var.tags
+}
+
+# Off-host immutable audit copy (Option A). Dedicated group, separate from the
+# noisy api group, with long retention so the durable audit trail outlives the
+# operational logs. The app ships each audit row here via logs:PutLogEvents; the
+# task role is granted CreateLogStream/PutLogEvents on THIS group only.
+resource "aws_cloudwatch_log_group" "audit" {
+  name              = "/petrobrain/${var.name}/audit"
+  retention_in_days = var.audit_log_retention_days
   tags              = var.tags
 }
 
@@ -89,6 +105,14 @@ output "worker_log_group" {
 
 output "otel_log_group" {
   value = aws_cloudwatch_log_group.otel.name
+}
+
+output "audit_log_group" {
+  value = aws_cloudwatch_log_group.audit.name
+}
+
+output "audit_log_group_arn" {
+  value = aws_cloudwatch_log_group.audit.arn
 }
 
 output "otel_config_param_arn" {

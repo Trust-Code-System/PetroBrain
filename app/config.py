@@ -65,6 +65,15 @@ class Settings(BaseSettings):
     admin_document_store_path: str = "data/admin_documents.jsonl"
     audit_events_store_path: str = "data/audit_events.jsonl"
     audit_store_prompt_text: bool = False
+    # Off-host immutable audit copy (Option A). When enabled, every durable audit
+    # row is also shipped, best-effort, to a dedicated CloudWatch Logs group so an
+    # attacker with write access to the app/DB cannot quietly erase the trail.
+    # Default OFF so dev/tests/the demo are unaffected; production turns it on via
+    # the stack module. Rows are hash-only by module contract, so off-host is safe.
+    audit_cloudwatch_enabled: bool = False
+    audit_cloudwatch_log_group: str = ""
+    # Region for the CloudWatch Logs client; empty falls back to sovereign_region.
+    audit_cloudwatch_region: str = ""
     assets_store_path: str = "data/assets.jsonl"
     asset_relationships_store_path: str = "data/asset_relationships.jsonl"
     tenants_store_path: str = "data/tenants.jsonl"

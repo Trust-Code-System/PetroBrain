@@ -126,6 +126,13 @@ data "aws_iam_policy_document" "task" {
     ]
     resources = ["*"]
   }
+  # Off-host immutable audit copy (Option A). The app ships audit rows to the
+  # dedicated audit group; scope the write to that group's streams only.
+  statement {
+    sid       = "AuditOffHost"
+    actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+    resources = [var.audit_log_group_arn, "${var.audit_log_group_arn}:*"]
+  }
 }
 
 resource "aws_iam_role_policy" "task" {

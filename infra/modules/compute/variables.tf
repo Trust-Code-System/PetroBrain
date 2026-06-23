@@ -61,6 +61,11 @@ variable "bucket_arn" {
   type        = string
 }
 
+variable "audit_log_group_arn" {
+  description = "ARN of the dedicated off-host audit log group. The task role is granted CreateLogStream + PutLogEvents on this group only."
+  type        = string
+}
+
 variable "api_cpu" {
   type    = number
   default = 512
