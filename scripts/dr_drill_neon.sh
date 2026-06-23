@@ -16,17 +16,29 @@
 #
 # USAGE:
 #   bash scripts/dr_drill_neon.sh
-#   # If you have more than one Neon project, set the id:
-#   NEON_PROJECT_ID=<project-id> bash scripts/dr_drill_neon.sh
+#   # Override the target project / org if needed:
+#   NEON_PROJECT_ID=<id> NEON_ORG_ID=<id> bash scripts/dr_drill_neon.sh
+#
+# IMPORTANT - two Neon projects exist for PetroBrain:
+#   * "petrobrain"     (silent-recipe-25520880, eu-central-1) = BACKEND system of
+#     record (tenants/users/assets/mrv). THIS is the drill target (the default).
+#   * "PetroBrain Web" (broad-breeze-15165574, us-east-1)     = Neon Auth / web;
+#     it has no app tables, so a drill there verifies nothing useful.
 #
 # Tunables (env): RESTORE_MINUTES (default 5), NEON_DATABASE (default neondb),
-#                 DRILL_BRANCH (default dr-drill-<UTC date>).
+#                 NEON_PROJECT_ID, NEON_ORG_ID, DRILL_BRANCH.
 set -euo pipefail
 
 RESTORE_MINUTES="${RESTORE_MINUTES:-5}"
 NEON_DATABASE="${NEON_DATABASE:-neondb}"
+# Default to the backend (system-of-record) project; override via env.
+NEON_PROJECT_ID="${NEON_PROJECT_ID:-silent-recipe-25520880}"
 DRILL_BRANCH="${DRILL_BRANCH:-dr-drill-$(date -u +%Y%m%d-%H%M%S)}"
 NEON="npx -y neonctl"
+# Passing --project-id on every call scopes operations to the project and avoids
+# neonctl's interactive org picker (which hangs a non-interactive shell).
+ORG_ARG=()
+[ -n "${NEON_ORG_ID:-}" ] && ORG_ARG=(--org-id "$NEON_ORG_ID")
 
 # Pick the project's venv python so we can verify with psycopg (no psql needed).
 if [ -x ".venv/Scripts/python.exe" ]; then PY=".venv/Scripts/python.exe"
@@ -36,13 +48,10 @@ else PY="python"; fi
 note() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 
 # --- resolve project ----------------------------------------------------------
-PROJECT_ARG=()
-if [ -n "${NEON_PROJECT_ID:-}" ]; then
-  PROJECT_ARG=(--project-id "$NEON_PROJECT_ID")
-else
-  note "No NEON_PROJECT_ID set; listing projects (set it if there is more than one)"
-  $NEON projects list || { echo "neonctl not authenticated. Run 'npx neonctl auth' or set NEON_API_KEY."; exit 1; }
-fi
+# --project-id keeps every call non-interactive (no org picker). ORG_ARG is only
+# needed for cross-project commands and is harmless when present.
+PROJECT_ARG=(--project-id "$NEON_PROJECT_ID" "${ORG_ARG[@]}")
+note "Target project: $NEON_PROJECT_ID  (db: $NEON_DATABASE)"
 
 # --- 1. restore point ---------------------------------------------------------
 RESTORE_TS="$(date -u -d "${RESTORE_MINUTES} minutes ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
