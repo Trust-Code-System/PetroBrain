@@ -17,7 +17,7 @@ import logging
 from typing import Any
 
 from app.config import get_settings
-from app.rag.embeddings import Embedder
+from app.rag.embeddings import Embedder, EmbeddingError
 from app.rag.reranker import Reranker
 from app.rag.vectorstore import VectorStore, _require_tenant_id
 
@@ -47,7 +47,15 @@ class Retriever:
         precedence over the legacy ``asset`` single-value filter.
         """
         tenant_id = _require_tenant_id(tenant_id)
-        [q_emb] = await self.embedder.embed([query])
+        try:
+            [q_emb] = await self.embedder.embed([query])
+        except EmbeddingError:
+            # Embedding provider down (e.g. quota exhausted). Degrade to no hits
+            # rather than failing the whole chat turn with a raw provider error;
+            # the orchestrator then answers ungrounded (no citations) instead of
+            # 500ing. Full detail is already logged in the embeddings layer.
+            logger.warning("retrieval_skipped_embedding_unavailable tenant_id=%s", tenant_id)
+            return []
         hits = await self.store.hybrid_search(
             tenant_id=tenant_id, query_text=query, query_embedding=q_emb,
             top_k=self.settings.retrieval_top_k,
