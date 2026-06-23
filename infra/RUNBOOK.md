@@ -232,7 +232,10 @@ filesystem check at container start.
 
 ## Observability
 
-- Logs: CloudWatch `/petrobrain/<env>/{api,worker,otel-collector}`.
+- Logs: CloudWatch `/petrobrain/<env>/{api,worker,otel-collector,audit}`. The
+  `audit` group is the off-host immutable audit copy (Option A); it has long
+  retention (400d) and the task role can only `CreateLogStream`/`PutLogEvents`
+  into it. See `infra/DEPLOY_AUDIT_OBS.md`.
 - Traces: X-Ray (via the ADOT sidecar). Metrics: CloudWatch EMF namespace
   `PetroBrain`. Container Insights is on for the cluster.
 - App `/metrics` (Prometheus) is also exposed on the API task if you add a
@@ -252,6 +255,9 @@ subscribe PagerDuty/Opsgenie/Slack to the topic ARN for on-call.
 | `*-latency-p95` | p95 TargetResponseTime over budget | slowness |
 | `*-rds-cpu-high` / `*-rds-free-storage-low` | RDS saturation / disk floor | DB risk |
 | `*-ecs-api-cpu-high` | API service CPU sustained high | scale up / investigate |
+| `*-audit-security-event` | a security-relevant audit row written | guardrail bypass etc. (review now) |
+| `*-audit-write-failed` | an audit write failed (durable or off-host) | actions may be unrecorded (investigate now) |
+| `*-embedding-provider-failed` | embedding failures > threshold / 5 min | ingestion + RAG degraded (check key/quota) |
 
 Tune thresholds via the `*_threshold` / `*_percent` / `*_bytes` vars on the
 `alerting` module against the first weeks of real traffic.
