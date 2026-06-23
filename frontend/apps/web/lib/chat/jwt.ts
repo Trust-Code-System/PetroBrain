@@ -30,6 +30,24 @@ export function decodePrincipal(token: string | null): Principal | null {
   }
 }
 
+/**
+ * Read the ``exp`` claim (seconds since epoch) and return it as a millisecond
+ * epoch, or null for a malformed token / missing claim. Decode-only - used to
+ * schedule a proactive refresh before the access token expires.
+ */
+export function tokenExpiryMs(token: string | null): number | null {
+  if (!token) return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(b64urlDecode(parts[1]!)) as Record<string, unknown>;
+    const exp = payload.exp;
+    return typeof exp === 'number' && Number.isFinite(exp) ? exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
 function stringClaim(obj: unknown, key: string): string | null {
   const v = (obj as Record<string, unknown>)[key];
   return typeof v === 'string' && v.length > 0 ? v : null;

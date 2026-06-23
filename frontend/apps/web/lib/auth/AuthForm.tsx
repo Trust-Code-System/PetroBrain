@@ -75,7 +75,7 @@ export function AuthForm({ mode }: AuthFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const apiBaseUrl = useChatStore((s) => s.apiBaseUrl);
-  const setToken = useChatStore((s) => s.setToken);
+  const setSession = useChatStore((s) => s.setSession);
   const sessionExpiredReason = useChatStore((s) => s.sessionExpiredReason);
   const clearSessionExpired = useChatStore((s) => s.clearSessionExpired);
   const setCallMeName = useSettingsStore((s) => s.setCallMeName);
@@ -147,7 +147,7 @@ export function AuthForm({ mode }: AuthFormProps) {
             ...(accountType ? { account_type: accountType } : {}),
           }, controller.signal)
         : await signin(apiBaseUrl, { email: cleanedEmail, password }, controller.signal);
-      setToken(res.token, { ...res.principal, email: res.principal.email || cleanedEmail });
+      setSession(res.token, res.refresh_token, { ...res.principal, email: res.principal.email || cleanedEmail });
       clearSessionExpired();
       // Capture the signup name in the same settings field the sidebar pill
       // already prefers over the auto-generated user_id, so the user sees

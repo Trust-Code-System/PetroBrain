@@ -41,6 +41,13 @@ function resolveApiBaseUrl(): string {
 
 interface ChatStoreState {
   token: string | null;
+  /**
+   * Long-lived, single-use refresh token (from /auth/signin|signup|refresh).
+   * Persisted alongside the access token so a reload can keep refreshing. The
+   * proactive refresher (lib/auth/useTokenRefresh) exchanges it for a new pair
+   * shortly before the access token expires.
+   */
+  refreshToken: string | null;
   principal: Principal | null;
   module: ModuleSelection;
   modulePinned: boolean;
@@ -70,6 +77,15 @@ interface ChatStoreState {
    */
   sessionExpiredReason: 'expired' | 'revoked' | 'invalid' | null;
   setToken: (token: string | null, principal?: PrincipalPayload | null) => void;
+  /**
+   * Set the full session at once (sign-in/sign-up and each successful refresh).
+   * Keeps the access token, refresh token and principal in lockstep.
+   */
+  setSession: (
+    token: string,
+    refreshToken: string,
+    principal?: PrincipalPayload | null,
+  ) => void;
   setModule: (m: ModuleSelection) => void;
   setModulePinned: (pinned: boolean) => void;
   setAssetContext: (asset: string | null) => void;
@@ -96,6 +112,7 @@ export const useChatStore = create<ChatStoreState>()(
   persist(
     (set) => ({
       token: null,
+      refreshToken: null,
       principal: null,
       module: 'auto',
       modulePinned: false,
@@ -110,6 +127,15 @@ export const useChatStore = create<ChatStoreState>()(
       setToken: (token, principalPayload) =>
         set({
           token,
+          // Clearing the access token (sign-out) clears the refresh token too,
+          // so a stale refresh token can't linger in sessionStorage after logout.
+          ...(token === null ? { refreshToken: null } : {}),
+          principal: principalPayload ? principalFromPayload(principalPayload) : decodePrincipal(token),
+        }),
+      setSession: (token, refreshToken, principalPayload) =>
+        set({
+          token,
+          refreshToken,
           principal: principalPayload ? principalFromPayload(principalPayload) : decodePrincipal(token),
         }),
       setModule: (module) => set({
@@ -123,7 +149,7 @@ export const useChatStore = create<ChatStoreState>()(
       setForceCanvasNext: (forceCanvasNext) => set({ forceCanvasNext }),
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
       expireSession: (reason) =>
-        set({ token: null, principal: null, sessionExpiredReason: reason }),
+        set({ token: null, refreshToken: null, principal: null, sessionExpiredReason: reason }),
       clearSessionExpired: () => set({ sessionExpiredReason: null }),
     }),
     {
@@ -145,6 +171,7 @@ export const useChatStore = create<ChatStoreState>()(
       }),
       partialize: (s) => ({
         token: s.token,
+        refreshToken: s.refreshToken,
         principal: s.principal,
         module: s.module,
         modulePinned: s.modulePinned,
