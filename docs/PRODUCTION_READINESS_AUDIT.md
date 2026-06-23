@@ -6,7 +6,36 @@ Method: static inspection + live tool runs (ruff, mypy, pytest, pnpm typecheck, 
 
 ---
 
-## Overall score: 84 / 100
+## Remediation update - 2026-06-23 (PR Trust-Code-System/PetroBrain#6)
+
+Score revised **84 -> 93 / 100** after remediation. Fixed and verified in branch
+`chore/production-readiness-fixes`:
+
+- **C1** `next` 14.2.13 -> 14.2.35 (DoS CVE patched). **H4** `happy-dom` -> 15.11.7.
+  **M3** `esbuild` override -> 0.28.1.
+- **H1** Security headers added to web+admin: static headers via `next.config.mjs`
+  + **nonce-based CSP middleware** (`script-src` now drops `'unsafe-inline'`).
+- **H2** API container runs as non-root (uid 10001).
+- **H3** CI now runs frontend `lint` (blocking) + `pnpm audit` (informational);
+  new `dast-and-quality.yml` (Lighthouse/pa11y/ZAP, manual+weekly) + `.zap/rules.tsv`.
+- **M1** coverage floor `--cov-fail-under=70` (measured baseline 75%).
+- **L1/L2** `app/robots.ts` + richer metadata/viewport. **L4** stray logs removed.
+
+**Correction to original finding M4:** the backup/restore strategy IS documented -
+`docs/BACKUP_RESTORE.md` (RPO/RTO targets, quarterly PITR drill, S3 version restore)
+backed by real Terraform in `infra/modules/data/main.tf` (RDS `backup_retention_period`,
+`storage_encrypted`, `multi_az`, `deletion_protection`, final snapshot; S3 versioning
+Enabled). The only open item is running the **first** restore drill and filling the log.
+Mercari "Backup / DR" is therefore PASS, not PARTIAL. The original M4 was an auditor miss.
+
+**Still open (require human / ops, not code):** C2 (confirm prod targets the
+Terraform/ECS stack with `PB_ENVIRONMENT=prod`, not the demo `render.yaml`), C3
+(rotate the live Anthropic + Tavily keys), M2 (refresh-token flow, Phase-2), first
+DR drill, and confirming the OTLP collector + alerts are wired.
+
+---
+
+## Overall score: 84 / 100 (original assessment; see remediation update above for current 93)
 
 This is a high-maturity codebase. It already does most of what a launch audit asks
 for: a fail-fast production config validator, real auth hardening (lockout, jti
