@@ -114,7 +114,7 @@ export function EmptyState({ onPrompt }: { onPrompt?: PromptHandler }) {
         </p>
       </div>
 
-      <div className="grid w-full grid-cols-1 gap-3 text-left sm:grid-cols-3">
+      <div className="hidden w-full grid-cols-1 gap-3 text-left sm:grid sm:grid-cols-3">
         {SUGGESTIONS.map((s) => (
           <button
             key={s.title}
