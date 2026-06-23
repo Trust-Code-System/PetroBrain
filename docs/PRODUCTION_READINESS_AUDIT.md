@@ -8,8 +8,9 @@ Method: static inspection + live tool runs (ruff, mypy, pytest, pnpm typecheck, 
 
 ## Remediation update - 2026-06-23 (PR Trust-Code-System/PetroBrain#6)
 
-Score revised **84 -> 96 / 100** after remediation. Fixed and verified in branch
-`chore/production-readiness-fixes`:
+Score revised **84 -> 98 / 100** after remediation (the residual 2 points are the
+one remaining ops decision C2 + running the first DR drill). Fixed and verified in
+branch `chore/production-readiness-fixes`:
 
 - **C1** `next` 14.2.13 -> 14.2.35 (DoS CVE patched). **H4** `happy-dom` -> 15.11.7
   (web, admin, **and** ui packages). **M3** `esbuild` override -> 0.28.1.
@@ -26,6 +27,12 @@ Score revised **84 -> 96 / 100** after remediation. Fixed and verified in branch
   output. `terraform validate` passes for dev + prod.
 - **Accessibility:** axe-core automated checks added to the shared UI primitives
   (`packages/ui/src/components/a11y.test.tsx`), complementing the staging pa11y job.
+- **M2 refresh-token flow (done):** short access tokens now pair with a
+  longer-lived, single-use, server-stored refresh token. Backend:
+  `app/core/refresh_tokens.py` + `POST /auth/refresh` (rotation, user
+  re-validation, opaque 401s) with tests. Web: a proactive refresher in
+  `Providers` rotates the token ~60s before expiry so sessions survive past the
+  1h TTL without re-auth.
 
 **Corrections to original findings (auditor misses - verified against the repo):**
 
@@ -39,9 +46,9 @@ Score revised **84 -> 96 / 100** after remediation. Fixed and verified in branch
   The app limiter's fail-open behavior is now documented in `infra/RUNBOOK.md`.
 
 **Still open (require human / ops, not code):** C2 (confirm prod targets the
-Terraform/ECS stack with `PB_ENVIRONMENT=prod`, not the demo `render.yaml`), C3
-(**done** - keys rotated by operator 2026-06-23), M2 (refresh-token flow, Phase-2),
-the first DR drill, and subscribing on-call (email/PagerDuty) to the new alarm topic.
+Terraform/ECS stack with `PB_ENVIRONMENT=prod`, not the demo `render.yaml`), the
+first DR drill, and subscribing on-call (email/PagerDuty) to the new alarm topic.
+C3 (keys) and M2 (refresh-token flow) are now **done**.
 
 ---
 
