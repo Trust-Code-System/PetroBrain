@@ -84,7 +84,11 @@ export function EmptyState({ onPrompt }: { onPrompt?: PromptHandler }) {
   const name = useMemo(() => {
     const preferred = (callMeName || displayNameSetting).trim();
     if (preferred) return preferred;
-    return principal ? displayName(principal.userId) : 'there';
+    if (!principal) return 'there';
+    // Fall back to the account identity. Prefer the email (every device has
+    // it) over the raw userId, which is an opaque hash and renders as e.g.
+    // "6b72871a" - never use it for a human-facing greeting.
+    return displayName(principal.email || principal.userId);
   }, [callMeName, displayNameSetting, principal]);
   const part = timeOfDay();
 
