@@ -1,6 +1,7 @@
 """Centralized configuration. Values come from environment / .env."""
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from functools import lru_cache
@@ -342,6 +343,34 @@ def validate_production_settings(settings: Settings) -> None:
         errors.append("PB_MALWARE_SCAN_HOST is required when malware scanning is enabled")
     if errors:
         raise RuntimeError("Unsafe production configuration: " + "; ".join(errors))
+
+
+def warn_on_degraded_embeddings(settings: Settings) -> None:
+    """Log a startup WARNING when embeddings are not usable as configured.
+
+    Unlike :func:`validate_production_settings` this never raises and runs in
+    every environment - it is fast feedback, not a gate. It catches the *static*
+    misconfigurations only: no self-hosted endpoint, or a missing/placeholder
+    OpenAI key. A key that is present but out of quota (``insufficient_quota``)
+    cannot be detected without a live, billable API call, so that runtime
+    condition is covered by the ``embedding_provider_failed`` CloudWatch alarm
+    (infra/modules/alerting) instead. When embeddings are down, document
+    ingestion and RAG retrieval both fail (retrieval degrades to no citations)."""
+    reason = ""
+    if settings.llm_provider == "self_hosted":
+        if not (settings.embedding_api_base or settings.llm_api_base):
+            reason = (
+                "self-hosted embeddings selected but neither PB_EMBEDDING_API_BASE "
+                "nor PB_LLM_API_BASE is set"
+            )
+    elif not settings.embedding_api_base and _missing_or_placeholder_secret("OPENAI_API_KEY"):
+        reason = "hosted embeddings need OPENAI_API_KEY but it is missing or a placeholder"
+    if reason:
+        logging.getLogger("app.config").warning(
+            "embeddings_misconfigured %s - document ingestion and RAG retrieval "
+            "will fail until this is fixed",
+            reason,
+        )
 
 
 def _bad_origin_reason(origin: str) -> str:

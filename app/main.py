@@ -33,7 +33,11 @@ from app.api import (
     routes_tasks,
     routes_wellcontrol,
 )
-from app.config import get_settings, validate_production_settings
+from app.config import (
+    get_settings,
+    validate_production_settings,
+    warn_on_degraded_embeddings,
+)
 from app.core.http_hardening import (
     add_security_headers,
     check_rate_limit,
@@ -44,6 +48,10 @@ from app.core.observability import metrics_response, setup_observability
 
 settings = get_settings()
 validate_production_settings(settings)
+# Non-fatal: log a clear warning at boot if embeddings can't work as configured
+# (missing key / no self-hosted endpoint), so the operator sees it before users
+# hit failed ingestion. Runtime exhaustion (out of quota) is alarmed separately.
+warn_on_degraded_embeddings(settings)
 
 # H9: refuse to boot in prod if the DB role bypasses RLS. No-op outside prod
 # or when persistence is local_json. Catches the common ops shortcut of
