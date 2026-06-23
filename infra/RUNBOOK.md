@@ -94,6 +94,15 @@ First-time, after `apply`:
 
 6. Point DNS (CNAME/ALIAS) at the `alb_dns_name` output.
 
+7. **Subscribe on-call to alarms.** Set `alert_email` in `terraform.tfvars`
+   (re-apply), or wire PagerDuty/Opsgenie/Slack to the `alarms_sns_topic_arn`
+   output. Until something is subscribed, the CloudWatch alarms fire into a topic
+   nobody is listening to. See the Alerting section under Observability.
+
+8. **Run the first RDS DR drill** once data is flowing: the PITR procedure in
+   `docs/BACKUP_RESTORE.md` against `petrobrain-<env>-pg`, then record it in the
+   drill log (the Neon-side drill is already logged).
+
 ---
 
 ## 2. Ship a new image
