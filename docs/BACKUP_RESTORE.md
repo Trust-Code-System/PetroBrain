@@ -75,8 +75,8 @@ aws rds delete-db-instance --db-instance-identifier petrobrain-restore-drill \
 ```
 
 | Date | Restore duration (measured RTO) | Data currency (measured RPO) | Result | Notes |
-|---|---|---|---|---|
-| _pending first drill_ | | | | |
+| --- | --- | --- | --- | --- |
+| 2026-06-23 | 22s (Neon PITR branch create + verify) | ~5 min | PASS | First drill. Branched `petrobrain` project (`silent-recipe-25520880`, eu-central-1) at T-5min; verified 23 public tables incl. tenants=6, users=10, assets=1, mrv_inventories=2, audit_events=216; branch deleted. Well within RTO/RPO targets. |
 
 ## S3 object restore
 
