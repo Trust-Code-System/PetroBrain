@@ -129,6 +129,43 @@ resource "aws_cloudwatch_metric_alarm" "rds_free_storage" {
   tags                = var.tags
 }
 
+# --- Audit / security -----------------------------------------------------------
+# The app emits a greppable "audit_security_event" WARNING to stdout when a
+# security-relevant audit row is written (e.g. a guardrail bypass attempt) - see
+# app/db/audit_events_repository.py. A log metric filter turns each occurrence
+# into a metric; the alarm pages on-call. This is the out-of-band path the
+# in-app admin notification does not provide.
+resource "aws_cloudwatch_log_metric_filter" "audit_security_event" {
+  name           = "${var.name}-audit-security-event"
+  log_group_name = var.api_log_group
+  pattern        = "audit_security_event"
+
+  metric_transformation {
+    name          = "AuditSecurityEvents"
+    namespace     = "PetroBrain/${var.name}"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "audit_security_event" {
+  alarm_name          = "${var.name}-audit-security-event"
+  alarm_description   = "A security-relevant audit event (e.g. guardrail bypass attempt) was recorded - review immediately."
+  namespace           = "PetroBrain/${var.name}"
+  metric_name         = "AuditSecurityEvents"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = local.actions
+  # No ok_actions: a security event is a point-in-time signal, not a sustained
+  # state, so an "OK" transition would just be noise.
+  tags = var.tags
+}
+
 # --- Compute tier -------------------------------------------------------------
 
 resource "aws_cloudwatch_metric_alarm" "ecs_cpu" {

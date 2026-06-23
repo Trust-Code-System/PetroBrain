@@ -29,6 +29,11 @@ variable "ecs_service_name" {
   type = string
 }
 
+variable "api_log_group" {
+  description = "CloudWatch log group for the API container, scanned for the audit_security_event marker."
+  type        = string
+}
+
 # Thresholds. Defaults are conservative starting points; tune against the first
 # weeks of real traffic in the env root.
 variable "alb_5xx_threshold" {

@@ -12,6 +12,7 @@ Raw user text and raw model output MUST NEVER pass through this module.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,6 +20,28 @@ from threading import Lock
 from typing import Any
 
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
+
+# Audit actions/flags that are security-relevant and must page on-call, not just
+# sit in the admin UI. A guardrail bypass attempt is the load-bearing one.
+SECURITY_AUDIT_ACTIONS = frozenset({"bypass_attempt"})
+SECURITY_AUDIT_FLAGS = frozenset({"safety_bypass"})
+
+
+def _emit_security_signal(row: AuditEventRow) -> None:
+    """Emit a distinct, greppable stdout marker for security-relevant audit rows.
+
+    The durable row already lands in audit_events (and a bypass also raises an
+    in-app admin notification), but neither pages anyone. This WARNING goes to
+    stdout -> CloudWatch, where a metric filter + alarm (infra/modules/alerting)
+    forwards it to the on-call SNS topic. Hashes only; no raw payload."""
+    flags = list(row.flags or [])
+    if row.action in SECURITY_AUDIT_ACTIONS or SECURITY_AUDIT_FLAGS.intersection(flags):
+        logger.warning(
+            "audit_security_event action=%s tenant=%s user=%s module=%s flags=%s",
+            row.action, row.tenant_id, row.user_id, row.module, ",".join(flags),
+        )
 
 
 @dataclass
@@ -94,6 +117,7 @@ class LocalJsonAuditEventsRepository:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self.path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(row.as_dict(), sort_keys=True) + "\n")
+        _emit_security_signal(row)
         return row
 
     def query(
@@ -219,7 +243,9 @@ class PostgresAuditEventsRepository:
                  response_hash, Json(list(retrieved_clauses or [])),
                  Json(list(flags or [])), Json(dict(usage or {}))),
             ).fetchone()
-        return _row_to_event(row)
+        event = _row_to_event(row)
+        _emit_security_signal(event)
+        return event
 
     def query(
         self, *, tenant_id: str,
