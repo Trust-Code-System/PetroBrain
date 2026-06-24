@@ -48,6 +48,30 @@ export async function requeueAdminDocument(
   return (await resp.json()) as AdminDocumentRow;
 }
 
+export interface DeleteAdminDocumentResult {
+  ingest_id: string;
+  deleted: boolean;
+  chunks_deleted: number;
+}
+
+/**
+ * Permanently remove an uploaded document: its ingest record, the stored blob,
+ * and (when no sibling ingest shares its document_id) its indexed chunks. The
+ * backend gates on ``role=admin`` and scopes the delete to the caller's tenant.
+ */
+export async function deleteAdminDocument(
+  opts: RequestOpts & { ingestId: string },
+): Promise<DeleteAdminDocumentResult> {
+  const init: RequestInit = {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${opts.token}` },
+  };
+  if (opts.signal) init.signal = opts.signal;
+  const resp = await fetch(new URL(`/admin/documents/${opts.ingestId}`, opts.baseUrl), init);
+  if (!resp.ok) throw await apiError(resp);
+  return (await resp.json()) as DeleteAdminDocumentResult;
+}
+
 export interface RequeueStuckResult {
   requeued: number;
   results: { ingest_id: string; status: string; detail?: string }[];

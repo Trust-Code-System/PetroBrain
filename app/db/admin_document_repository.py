@@ -138,6 +138,19 @@ class LocalJsonAdminDocumentRepository:
                 return row
         return None
 
+    def delete(self, *, tenant_id: str, ingest_id: str) -> bool:
+        """Drop a single ingest record. Returns True if a row was removed."""
+        with self._lock:
+            rows = self._read_all_locked()
+            kept = [
+                r for r in rows
+                if not (r.get("tenant_id") == tenant_id and r.get("ingest_id") == ingest_id)
+            ]
+            if len(kept) == len(rows):
+                return False
+            self._write_all_locked(kept)
+            return True
+
     def list_records(self, *, tenant_id: str) -> list[dict[str, Any]]:
         rows = [_summary(r) for r in self._read_all() if r.get("tenant_id") == tenant_id]
         return sorted(rows, key=lambda r: r["created_utc"], reverse=True)
@@ -247,6 +260,15 @@ class PostgresAdminDocumentRepository:
                 (tenant_id, ingest_id),
             ).fetchone()
         return _serialize_admindoc(row) if row else None
+
+    def delete(self, *, tenant_id: str, ingest_id: str) -> bool:
+        with self._conn(tenant_id) as conn:
+            row = conn.execute(
+                "DELETE FROM admin_documents WHERE tenant_id = %s AND ingest_id = %s "
+                "RETURNING ingest_id",
+                (tenant_id, ingest_id),
+            ).fetchone()
+        return row is not None
 
     def list_records(self, *, tenant_id: str) -> list[dict[str, Any]]:
         with self._conn(tenant_id) as conn:

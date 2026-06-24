@@ -421,6 +421,107 @@ def test_requeue_stuck_reruns_all_queued(monkeypatch, admin_repo, memory_store):
     assert all(r["status"] == "done" for r in admin_repo.list_records(tenant_id="tenant-a"))
 
 
+def test_delete_removes_record_object_and_chunks(monkeypatch, admin_repo, memory_store):
+    chunk_deletes: list[tuple[str, str]] = []
+
+    async def _fake_delete_chunks(tenant_id, document_id):
+        chunk_deletes.append((tenant_id, document_id))
+        return 3
+
+    monkeypatch.setattr(routes_admin_documents, "_delete_vector_chunks", _fake_delete_chunks)
+
+    up = client.post(
+        "/admin/documents",
+        headers=_admin_headers(),
+        data={"metadata": json.dumps(_payload(document_id="SOP-DEL-1"))},
+        files={"file": ("kick.md", _KICK_MD.encode("utf-8"), "text/markdown")},
+    )
+    assert up.json()["status"] == "done"
+    ingest_id = up.json()["ingest_id"]
+    object_key = admin_repo.get(tenant_id="tenant-a", ingest_id=ingest_id)["object_key"]
+
+    rd = client.delete(f"/admin/documents/{ingest_id}", headers=_admin_headers())
+    assert rd.status_code == 200, rd.text
+    body = rd.json()
+    assert body["deleted"] is True
+    assert body["chunks_deleted"] == 3
+
+    # Record gone, blob gone, chunks purged for this document_id.
+    assert admin_repo.get(tenant_id="tenant-a", ingest_id=ingest_id) is None
+    assert admin_repo.list_records(tenant_id="tenant-a") == []
+    with pytest.raises(KeyError):
+        memory_store.get(object_key)
+    assert chunk_deletes == [("tenant-a", "SOP-DEL-1")]
+
+
+def test_delete_keeps_chunks_when_a_sibling_shares_document_id(monkeypatch, admin_repo, memory_store):
+    chunk_deletes: list[tuple[str, str]] = []
+
+    async def _fake_delete_chunks(tenant_id, document_id):
+        chunk_deletes.append((tenant_id, document_id))
+        return 0
+
+    monkeypatch.setattr(routes_admin_documents, "_delete_vector_chunks", _fake_delete_chunks)
+
+    # Two uploads share the same document_id (chunks are keyed by document_id).
+    ids = []
+    for _ in range(2):
+        up = client.post(
+            "/admin/documents",
+            headers=_admin_headers(),
+            data={"metadata": json.dumps(_payload(document_id="SOP-DUP-1"))},
+            files={"file": ("kick.md", _KICK_MD.encode("utf-8"), "text/markdown")},
+        )
+        ids.append(up.json()["ingest_id"])
+
+    # Deleting the first must NOT purge chunks - the sibling still represents them.
+    rd = client.delete(f"/admin/documents/{ids[0]}", headers=_admin_headers())
+    assert rd.status_code == 200
+    assert rd.json()["chunks_deleted"] == 0
+    assert chunk_deletes == []
+
+    # Deleting the last sibling now purges the chunks.
+    rd2 = client.delete(f"/admin/documents/{ids[1]}", headers=_admin_headers())
+    assert rd2.status_code == 200
+    assert chunk_deletes == [("tenant-a", "SOP-DUP-1")]
+
+
+def test_delete_unknown_id_404s():
+    rd = client.delete("/admin/documents/does-not-exist", headers=_admin_headers())
+    assert rd.status_code == 404
+
+
+def test_delete_requires_admin_role():
+    rd = client.delete(
+        "/admin/documents/whatever",
+        headers=auth_headers(role="engineer", allowed_assets=["Asset-A"]),
+    )
+    assert rd.status_code == 403
+
+
+def test_delete_is_tenant_isolated(monkeypatch, admin_repo):
+    async def _noop(tenant_id, document_id):
+        return 0
+
+    monkeypatch.setattr(routes_admin_documents, "_delete_vector_chunks", _noop)
+
+    up = client.post(
+        "/admin/documents",
+        headers=_admin_headers(),
+        data={"metadata": json.dumps(_payload(document_id="SOP-ISO-1"))},
+        files={"file": ("kick.md", _KICK_MD.encode("utf-8"), "text/markdown")},
+    )
+    ingest_id = up.json()["ingest_id"]
+
+    # Tenant B cannot delete tenant A's document.
+    rd = client.delete(
+        f"/admin/documents/{ingest_id}",
+        headers=_admin_headers(tenant_id="tenant-b", user_id="bob", allowed_assets=["*"]),
+    )
+    assert rd.status_code == 404
+    assert admin_repo.get(tenant_id="tenant-a", ingest_id=ingest_id) is not None
+
+
 def test_worker_marks_failed_when_object_missing(admin_repo, memory_store):
     # Create the record by uploading, then nuke the bytes so the worker fails.
     r = client.post(

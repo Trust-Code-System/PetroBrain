@@ -53,6 +53,29 @@ class VectorStore:
                 ])
         return len(rows)
 
+    async def delete_document(self, *, tenant_id: str, document_id: str) -> int:
+        """Remove every chunk for ``document_id`` within the tenant.
+
+        Returns the number of rows deleted. The tenant filter is mandatory and
+        first (mirrors :meth:`hybrid_search`) so a delete can never reach across
+        tenants even if the GUC/RLS backstop were misconfigured.
+        """
+        tenant_id = _require_tenant_id(tenant_id)
+        if not isinstance(document_id, str) or not document_id.strip():
+            raise ValueError("document_id is required to delete chunks")
+        async with self.pool.acquire() as con:
+            async with con.transaction():
+                await _set_tenant_context(con, tenant_id)
+                status = await con.execute(
+                    "DELETE FROM doc_chunks WHERE tenant_id = $1 AND document_id = $2",
+                    tenant_id, document_id,
+                )
+        # asyncpg returns a command tag like "DELETE 3"; parse the row count.
+        try:
+            return int(status.split()[-1])
+        except (AttributeError, ValueError, IndexError):
+            return 0
+
     async def hybrid_search(self, tenant_id: str, query_text: str,
                             query_embedding: list[float], top_k: int,
                             asset: str | None = None,
