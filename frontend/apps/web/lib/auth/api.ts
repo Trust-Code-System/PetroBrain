@@ -20,6 +20,33 @@ export interface AuthResponse {
   refresh_token: string;
   principal: AuthPrincipalPayload;
   onboarding_required?: boolean;
+  // Present only on the response that completes 2FA enrollment - the one-time
+  // recovery codes, shown to the user once.
+  recovery_codes?: string[] | null;
+}
+
+/**
+ * Returned by /auth/signin and /auth/signup when a second factor is required.
+ * No session is issued yet; the client enrols (if needed) then posts a code to
+ * /auth/2fa/verify to exchange `mfa_token` for a real AuthResponse.
+ */
+export interface MfaChallenge {
+  mfa_required: true;
+  enrolled: boolean;
+  mfa_token: string;
+}
+
+export interface MfaEnrollData {
+  secret: string;
+  otpauth_uri: string;
+  issuer: string;
+  account: string;
+}
+
+export type AuthResult = AuthResponse | MfaChallenge;
+
+export function isMfaChallenge(result: AuthResult): result is MfaChallenge {
+  return (result as MfaChallenge).mfa_required === true;
 }
 
 export interface AuthErrorBody {
@@ -35,12 +62,24 @@ export class AuthError extends Error {
   }
 }
 
+/** Pull `{detail}` off an error body, falling back to the status line. */
+async function errorDetail(res: Response): Promise<string> {
+  let detail = `${res.status} ${res.statusText}`;
+  try {
+    const data = (await res.json()) as AuthErrorBody;
+    if (data && typeof data.detail === 'string') detail = data.detail;
+  } catch {
+    // Body wasn't JSON; keep the status-line fallback.
+  }
+  return detail;
+}
+
 async function postAuth(
   baseUrl: string,
   path: '/auth/signup' | '/auth/signin',
   body: { email: string; password: string; account_type?: 'individual' | 'company'; full_name?: string },
   signal?: AbortSignal,
-): Promise<AuthResponse> {
+): Promise<AuthResult> {
   const res = await fetch(`${baseUrl}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -49,26 +88,17 @@ async function postAuth(
   });
 
   if (res.ok) {
-    return (await res.json()) as AuthResponse;
+    // Either a full session or a 2FA challenge - the caller disambiguates.
+    return (await res.json()) as AuthResult;
   }
-
-  // Pull a friendlier message off `{detail: "..."}` when the backend supplied
-  // one, fall back to the HTTP status otherwise.
-  let detail = `${res.status} ${res.statusText}`;
-  try {
-    const data = (await res.json()) as AuthErrorBody;
-    if (data && typeof data.detail === 'string') detail = data.detail;
-  } catch {
-    // Body wasn't JSON; keep the status-line fallback.
-  }
-  throw new AuthError(detail, res.status);
+  throw new AuthError(await errorDetail(res), res.status);
 }
 
 export function signup(
   baseUrl: string,
   body: { email: string; password: string; account_type?: 'individual' | 'company'; full_name?: string },
   signal?: AbortSignal,
-): Promise<AuthResponse> {
+): Promise<AuthResult> {
   return postAuth(baseUrl, '/auth/signup', body, signal);
 }
 
@@ -76,8 +106,46 @@ export function signin(
   baseUrl: string,
   body: { email: string; password: string },
   signal?: AbortSignal,
-): Promise<AuthResponse> {
+): Promise<AuthResult> {
   return postAuth(baseUrl, '/auth/signin', body, signal);
+}
+
+/**
+ * Begin TOTP enrollment using a challenge token from signin/signup. Returns the
+ * authenticator secret + otpauth URI; the user then proves a code via verify2fa.
+ */
+export async function enroll2fa(
+  baseUrl: string,
+  mfaToken: string,
+  signal?: AbortSignal,
+): Promise<MfaEnrollData> {
+  const res = await fetch(`${baseUrl}/auth/2fa/enroll`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mfa_token: mfaToken }),
+    ...(signal ? { signal } : {}),
+  });
+  if (res.ok) return (await res.json()) as MfaEnrollData;
+  throw new AuthError(await errorDetail(res), res.status);
+}
+
+/**
+ * Complete sign-in (or enrollment) by submitting a 6-digit code or a recovery
+ * code with the challenge token. Returns the real session on success.
+ */
+export async function verify2fa(
+  baseUrl: string,
+  body: { mfa_token: string; code: string },
+  signal?: AbortSignal,
+): Promise<AuthResponse> {
+  const res = await fetch(`${baseUrl}/auth/2fa/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    ...(signal ? { signal } : {}),
+  });
+  if (res.ok) return (await res.json()) as AuthResponse;
+  throw new AuthError(await errorDetail(res), res.status);
 }
 
 /**

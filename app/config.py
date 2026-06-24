@@ -232,6 +232,15 @@ class Settings(BaseSettings):
     auth_lockout_max_failures: int = 5
     auth_lockout_window_minutes: int = 15
     auth_lockout_minutes: int = 15
+    # Two-factor (TOTP). When require_2fa is true every account must enrol in an
+    # authenticator app and pass a 6-digit code at sign-in. Roll out by deploying
+    # with this OFF (enrollment available, not enforced), enrolling, then turning
+    # it ON - flipping it on before anyone has enrolled forces all users through
+    # enrollment at next login. The challenge token bridges the password step and
+    # the code step and is intentionally short-lived.
+    require_2fa: bool = False
+    mfa_challenge_ttl_minutes: int = 10
+    totp_issuer: str = "PetroBrain"
 
     # RAG
     embedding_model: str = "text-embedding-3-large"
