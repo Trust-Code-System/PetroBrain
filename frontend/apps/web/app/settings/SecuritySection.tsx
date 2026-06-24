@@ -12,6 +12,7 @@ import {
   type MfaEnrollData,
   type MfaStatus,
 } from '@/lib/auth/api';
+import { QrCode } from '@/lib/auth/QrCode';
 
 const cardCls =
   'rounded-xl border border-neutral-200 bg-neutral-50/70 p-4 dark:border-neutral-700 dark:bg-neutral-900/60';
@@ -194,14 +195,18 @@ export function SecuritySection({ baseUrl, token }: { baseUrl: string; token: st
         enroll ? (
           <div className={`${cardCls} space-y-3`}>
             <p className="text-sm text-neutral-600 dark:text-neutral-300">
-              Add this account to your authenticator app, then enter the 6-digit code it shows.
+              Scan this QR code with your authenticator app (Google Authenticator, Authy,
+              1Password), then enter the 6-digit code it shows.
             </p>
+            <div className="flex justify-center">
+              <QrCode value={enroll.otpauth_uri} />
+            </div>
             <a href={enroll.otpauth_uri} className={`${ghostBtn} w-full`}>
-              Open in authenticator app
+              On this phone? Open in authenticator app
             </a>
             <div>
               <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-                Or enter this key manually
+                Can&apos;t scan? Enter this key manually
               </p>
               <div className="flex items-center gap-2">
                 <code className="flex-1 break-all rounded-md bg-white px-2 py-1.5 font-mono text-xs text-neutral-800 dark:bg-neutral-950 dark:text-neutral-100">
