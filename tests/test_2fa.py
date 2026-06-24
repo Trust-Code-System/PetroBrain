@@ -203,3 +203,62 @@ def test_signin_without_2fa_is_unchanged_when_flag_off():
     body = r.json()
     assert body["token"]
     assert "mfa_required" not in body
+
+
+def _session(email):
+    # Flag off so signup returns a real session token we can use as a bearer.
+    _STATE["require_2fa"] = False
+    token = _signup(email).json()["token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_settings_setup_then_activate_enables_2fa():
+    h = _session("setup@example.com")
+    setup = client.post("/auth/2fa/setup", headers=h)
+    assert setup.status_code == 200, setup.text
+    secret = setup.json()["secret"]
+    assert setup.json()["otpauth_uri"].startswith("otpauth://totp/")
+    act = client.post("/auth/2fa/activate", headers=h, json={"code": _code_for(secret)})
+    assert act.status_code == 200, act.text
+    assert len(act.json()["recovery_codes"]) == 10
+    assert client.get("/auth/2fa/status", headers=h).json()["enabled"] is True
+
+
+def test_settings_activate_rejects_wrong_code():
+    h = _session("badcode@example.com")
+    client.post("/auth/2fa/setup", headers=h)
+    bad = client.post("/auth/2fa/activate", headers=h, json={"code": "000000"})
+    assert bad.status_code == 401
+    assert client.get("/auth/2fa/status", headers=h).json()["enabled"] is False
+
+
+def test_settings_disable_requires_code_when_not_mandatory():
+    h = _session("disable@example.com")
+    secret = client.post("/auth/2fa/setup", headers=h).json()["secret"]
+    client.post("/auth/2fa/activate", headers=h, json={"code": _code_for(secret)})
+    bad = client.post("/auth/2fa/disable", headers=h, json={"code": "000000"})
+    assert bad.status_code == 401
+    ok = client.post("/auth/2fa/disable", headers=h, json={"code": _code_for(secret)})
+    assert ok.status_code == 200
+    assert client.get("/auth/2fa/status", headers=h).json()["enabled"] is False
+
+
+def test_settings_disable_blocked_when_2fa_required():
+    h = _session("mandatory@example.com")
+    secret = client.post("/auth/2fa/setup", headers=h).json()["secret"]
+    client.post("/auth/2fa/activate", headers=h, json={"code": _code_for(secret)})
+    _STATE["require_2fa"] = True
+    r = client.post("/auth/2fa/disable", headers=h, json={"code": _code_for(secret)})
+    assert r.status_code == 403
+
+
+def test_settings_regenerate_recovery_codes():
+    h = _session("regen@example.com")
+    secret = client.post("/auth/2fa/setup", headers=h).json()["secret"]
+    first = client.post(
+        "/auth/2fa/activate", headers=h, json={"code": _code_for(secret)}
+    ).json()["recovery_codes"]
+    regen = client.post("/auth/2fa/recovery-codes", headers=h, json={"code": _code_for(secret)})
+    assert regen.status_code == 200
+    second = regen.json()["recovery_codes"]
+    assert len(second) == 10 and set(second) != set(first)

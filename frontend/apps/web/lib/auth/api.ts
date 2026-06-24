@@ -214,6 +214,67 @@ export async function resetPassword(
   throw new AuthError(detail, res.status);
 }
 
+export interface MfaStatus {
+  enabled: boolean;
+  required: boolean;
+}
+
+/** Authenticated POST helper for the logged-in 2FA management endpoints. */
+async function authedPost(
+  baseUrl: string,
+  path: string,
+  token: string,
+  body?: Record<string, unknown>,
+): Promise<unknown> {
+  const res = await fetch(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  if (res.ok) return res.json();
+  throw new AuthError(await errorDetail(res), res.status);
+}
+
+export async function get2faStatus(baseUrl: string, token: string): Promise<MfaStatus> {
+  const res = await fetch(`${baseUrl}/auth/2fa/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (res.ok) return (await res.json()) as MfaStatus;
+  throw new AuthError(await errorDetail(res), res.status);
+}
+
+/** Begin enrollment from Settings (session-authenticated, no challenge token). */
+export function setup2fa(baseUrl: string, token: string): Promise<MfaEnrollData> {
+  return authedPost(baseUrl, '/auth/2fa/setup', token) as Promise<MfaEnrollData>;
+}
+
+export function activate2fa(
+  baseUrl: string,
+  token: string,
+  code: string,
+): Promise<{ recovery_codes: string[] }> {
+  return authedPost(baseUrl, '/auth/2fa/activate', token, { code }) as Promise<{
+    recovery_codes: string[];
+  }>;
+}
+
+export function disable2fa(baseUrl: string, token: string, code: string): Promise<MfaStatus> {
+  return authedPost(baseUrl, '/auth/2fa/disable', token, { code }) as Promise<MfaStatus>;
+}
+
+export function regenerateRecoveryCodes(
+  baseUrl: string,
+  token: string,
+  code: string,
+): Promise<{ recovery_codes: string[] }> {
+  return authedPost(baseUrl, '/auth/2fa/recovery-codes', token, { code }) as Promise<{
+    recovery_codes: string[];
+  }>;
+}
+
 /**
  * Exchange a refresh token for a fresh access + refresh pair. Throws AuthError
  * on a 401 (token used/expired/revoked) so the caller can drop the session and

@@ -136,6 +136,16 @@ class MfaStatusResponse(BaseModel):
     required: bool
 
 
+class MfaCodeRequest(BaseModel):
+    """A 6-digit TOTP (or a recovery code) for a logged-in 2FA management action."""
+
+    code: str = Field(min_length=1)
+
+
+class MfaCodesResponse(BaseModel):
+    recovery_codes: list[str]
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str = Field(min_length=1)
 
@@ -597,6 +607,140 @@ async def mfa_status(who: Principal = Depends(get_principal)) -> MfaStatusRespon
         enabled=bool(record and record.get("totp_enabled")),
         required=bool(getattr(settings, "require_2fa", False)),
     )
+
+
+def _load_active_session_user(who: Principal) -> dict:
+    record = get_users_repository().get(tenant_id=who.tenant_id, user_id=who.user_id)
+    if record is None or record.get("status") != "active":
+        raise HTTPException(status_code=401, detail="account not found")
+    return record
+
+
+def _check_2fa_code(record: dict, code: str) -> bool:
+    """True if ``code`` is a valid TOTP for the user. Recovery codes are NOT
+    accepted here - management actions (disable, regenerate) should be done with
+    a live authenticator code, not by burning a backup code."""
+    return totp.verify_totp(record.get("totp_secret"), code)
+
+
+@router.post("/2fa/setup", response_model=MfaEnrollResponse)
+async def setup_2fa(who: Principal = Depends(get_principal)) -> MfaEnrollResponse:
+    """Begin 2FA enrollment for the signed-in user (the Settings flow, distinct
+    from the at-login /auth/2fa/enroll which uses a challenge token)."""
+    settings = get_settings()
+    record = _load_active_session_user(who)
+    if record.get("totp_enabled"):
+        raise HTTPException(status_code=409, detail="two-factor is already on")
+    secret = totp.generate_secret()
+    get_users_repository().set_totp_pending(
+        tenant_id=record["tenant_id"], user_id=record["id"], secret=secret
+    )
+    return MfaEnrollResponse(
+        secret=secret,
+        otpauth_uri=totp.provisioning_uri(
+            secret, account_email=record["email"], issuer=_totp_issuer(settings)
+        ),
+        issuer=_totp_issuer(settings),
+        account=record["email"],
+    )
+
+
+@router.post("/2fa/activate", response_model=MfaCodesResponse)
+async def activate_2fa(
+    req: MfaCodeRequest, who: Principal = Depends(get_principal)
+) -> MfaCodesResponse:
+    """Confirm Settings enrollment with a code, enabling 2FA and returning the
+    one-time recovery codes."""
+    record = _load_active_session_user(who)
+    if record.get("totp_enabled"):
+        raise HTTPException(status_code=409, detail="two-factor is already on")
+    secret = record.get("totp_secret")
+    if not secret:
+        raise HTTPException(status_code=400, detail="start two-factor setup first")
+    lock_key = f"{record['email']}:2fa"
+    if auth_lockout.is_locked(record["tenant_id"], lock_key):
+        raise HTTPException(status_code=429, detail="too many attempts, please wait")
+    if not totp.verify_totp(secret, req.code):
+        auth_lockout.record_failure(record["tenant_id"], lock_key)
+        raise HTTPException(status_code=401, detail="invalid code")
+    auth_lockout.record_success(record["tenant_id"], lock_key)
+    recovery_codes = totp.generate_recovery_codes()
+    get_users_repository().enable_totp(
+        tenant_id=record["tenant_id"],
+        user_id=record["id"],
+        recovery_code_hashes=totp.hash_recovery_codes(recovery_codes),
+    )
+    audit_logger.write(AuditEvent(
+        event_type="auth_2fa_enabled",
+        tenant_id=record["tenant_id"],
+        user_id=record["id"],
+        role=record["role"],
+        route="/auth/2fa/activate",
+        request={"email": record["email"]},
+        response={"enabled": True},
+        metadata={"source": "settings"},
+    ))
+    return MfaCodesResponse(recovery_codes=recovery_codes)
+
+
+@router.post("/2fa/disable", response_model=MfaStatusResponse)
+async def disable_2fa(
+    req: MfaCodeRequest, who: Principal = Depends(get_principal)
+) -> MfaStatusResponse:
+    """Turn 2FA off (Settings). Blocked while 2FA is mandatory; otherwise
+    requires a current authenticator code so a hijacked session can't disable it."""
+    settings = get_settings()
+    if bool(getattr(settings, "require_2fa", False)):
+        raise HTTPException(
+            status_code=403, detail="two-factor is required and cannot be turned off"
+        )
+    record = _load_active_session_user(who)
+    if not record.get("totp_enabled"):
+        return MfaStatusResponse(enabled=False, required=False)
+    lock_key = f"{record['email']}:2fa"
+    if auth_lockout.is_locked(record["tenant_id"], lock_key):
+        raise HTTPException(status_code=429, detail="too many attempts, please wait")
+    if not _check_2fa_code(record, req.code):
+        auth_lockout.record_failure(record["tenant_id"], lock_key)
+        raise HTTPException(status_code=401, detail="invalid code")
+    auth_lockout.record_success(record["tenant_id"], lock_key)
+    get_users_repository().disable_totp(tenant_id=record["tenant_id"], user_id=record["id"])
+    audit_logger.write(AuditEvent(
+        event_type="auth_2fa_disabled",
+        tenant_id=record["tenant_id"],
+        user_id=record["id"],
+        role=record["role"],
+        route="/auth/2fa/disable",
+        request={"email": record["email"]},
+        response={"enabled": False},
+        metadata={"source": "settings"},
+    ))
+    return MfaStatusResponse(enabled=False, required=False)
+
+
+@router.post("/2fa/recovery-codes", response_model=MfaCodesResponse)
+async def regenerate_recovery_codes(
+    req: MfaCodeRequest, who: Principal = Depends(get_principal)
+) -> MfaCodesResponse:
+    """Replace the recovery codes with a fresh set (old ones stop working).
+    Requires a current authenticator code."""
+    record = _load_active_session_user(who)
+    if not record.get("totp_enabled"):
+        raise HTTPException(status_code=400, detail="two-factor is not on")
+    lock_key = f"{record['email']}:2fa"
+    if auth_lockout.is_locked(record["tenant_id"], lock_key):
+        raise HTTPException(status_code=429, detail="too many attempts, please wait")
+    if not _check_2fa_code(record, req.code):
+        auth_lockout.record_failure(record["tenant_id"], lock_key)
+        raise HTTPException(status_code=401, detail="invalid code")
+    auth_lockout.record_success(record["tenant_id"], lock_key)
+    recovery_codes = totp.generate_recovery_codes()
+    get_users_repository().replace_recovery_codes(
+        tenant_id=record["tenant_id"],
+        user_id=record["id"],
+        recovery_code_hashes=totp.hash_recovery_codes(recovery_codes),
+    )
+    return MfaCodesResponse(recovery_codes=recovery_codes)
 
 
 @router.post("/refresh", response_model=AuthResponse)

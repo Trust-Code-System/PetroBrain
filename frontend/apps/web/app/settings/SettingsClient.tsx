@@ -20,10 +20,12 @@ import {
 import { useChatStore } from '@/lib/chat/store';
 import { canAdminister } from '@/lib/auth/roles';
 import { getOnboardingStatus, type AccountType } from '@/lib/onboarding/api';
+import { SecuritySection } from './SecuritySection';
 
 type Section =
   | 'general'
   | 'profile'
+  | 'security'
   | 'instructions'
   | 'data'
   | 'notifications'
@@ -33,13 +35,14 @@ type Section =
 interface SectionDef {
   key: Section;
   label: string;
-  icon: 'general' | 'profile' | 'instructions' | 'data' | 'bell' | 'mic' | 'account';
+  icon: 'general' | 'profile' | 'security' | 'instructions' | 'data' | 'bell' | 'mic' | 'account';
   stub?: boolean;
 }
 
 const SECTIONS: SectionDef[] = [
   { key: 'general', label: 'General', icon: 'general' },
   { key: 'profile', label: 'Profile', icon: 'profile' },
+  { key: 'security', label: 'Security', icon: 'security' },
   { key: 'instructions', label: 'Custom instructions', icon: 'instructions' },
   { key: 'data', label: 'Data controls', icon: 'data' },
   { key: 'notifications', label: 'Notifications', icon: 'bell' },
@@ -141,6 +144,18 @@ function SectionIcon({ kind }: { kind: SectionDef['icon'] }) {
             strokeWidth="1.5"
             strokeLinecap="round"
           />
+        </svg>
+      );
+    case 'security':
+      return (
+        <svg {...c}>
+          <path
+            d="M10 3l5 2v4c0 3.5-2.2 6-5 7-2.8-1-5-3.5-5-7V5l5-2z"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+          />
+          <path d="M7.5 10l1.8 1.8L13 8.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       );
   }
@@ -630,6 +645,16 @@ export function SettingsClient() {
                     ) : null}
                   </div>
                 </Field>
+              </>
+            ) : null}
+
+            {section === 'security' ? (
+              <>
+                <SectionHeader
+                  title="Security"
+                  subtitle="Protect your account with two-factor authentication."
+                />
+                <SecuritySection baseUrl={baseUrl} token={token} />
               </>
             ) : null}
 
