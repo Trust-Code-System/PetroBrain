@@ -28,6 +28,7 @@ from app.config import get_settings
 from app.core.audit import AuditEvent, get_audit_logger
 from app.core import auth_lockout
 from app.core.auth import hash_password, mint_jwt, verify_password
+from app.core import password_reset
 from app.core import refresh_tokens
 from app.core.token_revocation import revoke as revoke_jti
 from app.db.tenants_repository import get_tenants_repository
@@ -100,6 +101,24 @@ class AuthResponse(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: str = Field(min_length=1)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, v: str) -> str:
+        return _validate_email(v)
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=1)
+    password: str = Field(min_length=1)
+
+
+class MessageResponse(BaseModel):
+    message: str
 
 
 class LogoutRequest(BaseModel):
@@ -396,6 +415,117 @@ async def refresh(req: RefreshRequest) -> AuthResponse:
     return AuthResponse(
         token=token,
         refresh_token=new_refresh,
+        principal=_to_principal_payload(record),
+        onboarding_required=False,
+    )
+
+
+@router.post("/forgot-password", response_model=MessageResponse)
+async def forgot_password(req: ForgotPasswordRequest) -> MessageResponse:
+    """Start a password reset for the given email.
+
+    Deliberately enumeration-safe: the response is identical whether or not the
+    email maps to an account, so an attacker can't probe which addresses are
+    registered. When the email does belong to an active user we mint a
+    short-lived single-use reset token and email a link; the work happens behind
+    the same neutral 200.
+    """
+    settings = get_settings()
+    # Same neutral message in every branch - never reveals account existence.
+    neutral = MessageResponse(
+        message="If that email belongs to an account, a reset link is on its way.",
+    )
+
+    users = get_users_repository()
+    record = users.find_by_email_any_tenant(req.email)
+    if record is None:
+        return neutral
+
+    try:
+        ttl_minutes = int(getattr(settings, "password_reset_ttl_minutes", 30))
+        raw_token = password_reset.issue(
+            user_id=record["id"],
+            tenant_id=record["tenant_id"],
+            email=record["email"],
+            ttl_seconds=ttl_minutes * 60,
+        )
+        from app.core.email import send_password_reset_email
+
+        delivery = send_password_reset_email(
+            to_email=record["email"], raw_token=raw_token, ttl_minutes=ttl_minutes
+        )
+        audit_logger.write(AuditEvent(
+            event_type="auth_password_reset_requested",
+            tenant_id=record["tenant_id"],
+            user_id=record["id"],
+            role=record["role"],
+            route="/auth/forgot-password",
+            request={"email": record["email"]},
+            response={"email_sent": bool(delivery.get("email_sent"))},
+            metadata={},
+        ))
+    except Exception:  # noqa: BLE001
+        # Never surface an internal failure here - it would turn into an oracle
+        # (error vs neutral 200 => email exists). The user can retry.
+        pass
+    return neutral
+
+
+@router.post("/reset-password", response_model=AuthResponse)
+async def reset_password(req: ResetPasswordRequest) -> AuthResponse:
+    """Complete a password reset: consume the emailed token, set the new
+    password, and sign the user in (returning a fresh access + refresh pair).
+
+    The reset token is single-use and short-lived; an unknown/expired/used token
+    yields an opaque 400 so nothing is leaked about why it failed.
+    """
+    _validate_password(req.password)
+
+    invalid = HTTPException(
+        status_code=400, detail="this reset link is invalid or has expired"
+    )
+    ref = password_reset.consume(req.token)
+    if ref is None:
+        raise invalid
+
+    users = get_users_repository()
+    record = users.get(tenant_id=ref.tenant_id, user_id=ref.user_id)
+    if record is None or record.get("status") != "active":
+        # The token was already consumed above, so a deactivated/missing account
+        # simply cannot complete the reset.
+        raise invalid
+
+    try:
+        record = users.set_password(
+            tenant_id=ref.tenant_id,
+            user_id=ref.user_id,
+            password_hash=hash_password(req.password),
+        )
+    except KeyError as exc:
+        raise invalid from exc
+
+    # A successful reset clears any active lockout so the user isn't locked out of
+    # the account they just regained control of.
+    try:
+        auth_lockout.record_success(record["tenant_id"], record["email"])
+    except Exception:  # noqa: BLE001
+        pass
+
+    token = _mint_for(record)
+    refresh_token = _issue_refresh(record)
+    audit_logger.write(AuditEvent(
+        event_type="auth_password_reset_completed",
+        tenant_id=record["tenant_id"],
+        user_id=record["id"],
+        role=record["role"],
+        route="/auth/reset-password",
+        request={"email": record["email"]},
+        response={"user_id": record["id"]},
+        metadata={},
+    ))
+    return AuthResponse(
+        token=token,
+        refresh_token=refresh_token,
         principal=_to_principal_payload(record),
         onboarding_required=False,
     )

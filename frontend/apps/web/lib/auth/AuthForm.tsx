@@ -247,12 +247,22 @@ export function AuthForm({ mode }: AuthFormProps) {
           </div>
 
           <div className="space-y-1.5">
-            <label
-              htmlFor="auth-password"
-              className="text-xs font-medium uppercase tracking-wide text-neutral-600 dark:text-neutral-300"
-            >
-              Password
-            </label>
+            <div className="flex items-center justify-between">
+              <label
+                htmlFor="auth-password"
+                className="text-xs font-medium uppercase tracking-wide text-neutral-600 dark:text-neutral-300"
+              >
+                Password
+              </label>
+              {mode === 'signin' ? (
+                <Link
+                  href={'/forgot-password' as Route}
+                  className="text-xs font-medium text-primary-700 hover:underline dark:text-primary-300"
+                >
+                  Forgot password?
+                </Link>
+              ) : null}
+            </div>
             <input
               id="auth-password"
               type="password"

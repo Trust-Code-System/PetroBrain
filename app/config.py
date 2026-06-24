@@ -223,6 +223,9 @@ class Settings(BaseSettings):
     # lockout. We have lockout (below) but not yet HIBP; raising to 12 reduces
     # the brute-forceable space while we wire that up.
     password_min_length: int = 12
+    # "Forgot password" reset links are short-lived and single-use. Kept tight
+    # because the link is a bearer credential delivered over email.
+    password_reset_ttl_minutes: int = 30
     # Per-account brute force lockout. After this many consecutive failed
     # /auth/signin attempts within auth_lockout_window_minutes, further
     # attempts for the same email are rejected for auth_lockout_minutes.
