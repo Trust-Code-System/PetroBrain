@@ -13,6 +13,11 @@ function canRequeue(row: AdminDocumentRow): boolean {
   return REQUEUEABLE.has(row.status) && !row.ingest_id.startsWith('optimistic-');
 }
 
+/** Optimistic rows have no backend record yet, so they can't be deleted. */
+function canDelete(row: AdminDocumentRow): boolean {
+  return !row.ingest_id.startsWith('optimistic-');
+}
+
 export interface DocumentsTableProps {
   rows: AdminDocumentRow[];
   isLoading: boolean;
@@ -22,6 +27,10 @@ export interface DocumentsTableProps {
   onRequeue?: (ingestId: string) => void;
   /** ingest_id currently being re-dispatched, for the per-row spinner. */
   requeuingId?: string | null;
+  /** When provided, every persisted row shows a "Delete" action. */
+  onDelete?: (ingestId: string) => void;
+  /** ingest_id currently being deleted, for the per-row spinner. */
+  deletingId?: string | null;
 }
 
 export function DocumentsTable({
@@ -31,7 +40,10 @@ export function DocumentsTable({
   emptyState,
   onRequeue,
   requeuingId,
+  onDelete,
+  deletingId,
 }: DocumentsTableProps) {
+  const showActions = Boolean(onRequeue || onDelete);
   if (isError) {
     return (
       <p role="alert" className="rounded-md border border-danger-border bg-danger-bg p-3 text-sm text-danger-fg dark:border-danger-border/40 dark:bg-danger-fg/20 dark:text-danger-bg">
@@ -58,7 +70,7 @@ export function DocumentsTable({
             <th scope="col" className="px-3 py-2 text-left">Status</th>
             <th scope="col" className="px-3 py-2 text-left">Chunks</th>
             <th scope="col" className="px-3 py-2 text-left">Updated</th>
-            {onRequeue ? <th scope="col" className="px-3 py-2 text-right">Actions</th> : null}
+            {showActions ? <th scope="col" className="px-3 py-2 text-right">Actions</th> : null}
           </tr>
         </thead>
         <tbody className="divide-y divide-neutral-100 bg-white dark:divide-neutral-800 dark:bg-neutral-900/60">
@@ -83,19 +95,32 @@ export function DocumentsTable({
               <td className="px-3 py-2 text-xs text-neutral-500 dark:text-neutral-400">
                 {formatRelative(row.updated_utc)}
               </td>
-              {onRequeue ? (
-                <td className="px-3 py-2 text-right">
-                  {canRequeue(row) ? (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      loading={requeuingId === row.ingest_id}
-                      disabled={Boolean(requeuingId) && requeuingId !== row.ingest_id}
-                      onClick={() => onRequeue(row.ingest_id)}
-                    >
-                      Requeue
-                    </Button>
-                  ) : null}
+              {showActions ? (
+                <td className="px-3 py-2">
+                  <div className="flex items-center justify-end gap-2">
+                    {onRequeue && canRequeue(row) ? (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        loading={requeuingId === row.ingest_id}
+                        disabled={Boolean(requeuingId) && requeuingId !== row.ingest_id}
+                        onClick={() => onRequeue(row.ingest_id)}
+                      >
+                        Requeue
+                      </Button>
+                    ) : null}
+                    {onDelete && canDelete(row) ? (
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        loading={deletingId === row.ingest_id}
+                        disabled={Boolean(deletingId) && deletingId !== row.ingest_id}
+                        onClick={() => onDelete(row.ingest_id)}
+                      >
+                        Delete
+                      </Button>
+                    ) : null}
+                  </div>
                 </td>
               ) : null}
             </tr>

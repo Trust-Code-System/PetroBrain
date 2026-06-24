@@ -27,6 +27,7 @@ from app.models.schemas import AdminDocumentMetadata
 from app.security.malware import MalwareDetected, MalwareScanUnavailable, scan_bytes
 from app.storage.object_store import get_object_store, object_key_for
 from app.workers.extractors import supported_extension
+from app.workers.ingest_failures import safe_failure_reason
 from app.workers.ingest_worker import ingest_document_task
 
 
@@ -137,6 +138,54 @@ async def get_document(ingest_id: str, who: Principal = Depends(_admin_only)):
     return _to_status(record)
 
 
+@router.delete("/{ingest_id}")
+async def delete_document(ingest_id: str, who: Principal = Depends(_admin_only)):
+    """Remove an uploaded document: its ingest record, the stored blob, and -
+    when no sibling ingest still represents the same ``document_id`` - its
+    indexed vector chunks. Tenant-scoped; returns 404 if the id is unknown.
+    """
+    repo = _repository()
+    record = repo.get(tenant_id=who.tenant_id, ingest_id=ingest_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="admin document ingest not found")
+
+    # Drop the record first so a concurrent list reflects the deletion promptly.
+    repo.delete(tenant_id=who.tenant_id, ingest_id=ingest_id)
+
+    # Best-effort blob cleanup. Each ingest owns its own object key, so this is
+    # always safe to remove regardless of siblings.
+    object_key = record.get("object_key")
+    if object_key:
+        try:
+            _object_store().delete(object_key)
+        except Exception as exc:  # noqa: BLE001 - never block delete on storage
+            logger.warning("object delete failed for ingest %s: %s", ingest_id, exc)
+
+    # Purge vector chunks only when no other ingest still represents this
+    # document_id (chunks are keyed by document_id, not ingest_id, so deleting
+    # them would otherwise strip a surviving duplicate's search results).
+    document_id = record.get("document_id")
+    siblings = any(
+        r.get("document_id") == document_id
+        for r in repo.list_records(tenant_id=who.tenant_id)
+    )
+    chunks_deleted = 0
+    if document_id and not siblings:
+        try:
+            chunks_deleted = await _delete_vector_chunks(who.tenant_id, document_id)
+        except Exception as exc:  # noqa: BLE001 - chunks may be re-cleaned later
+            logger.warning(
+                "vector chunk delete failed for document %s: %s", document_id, exc
+            )
+
+    _audit_admin_doc(
+        "admin_document_delete", who, ingest_id,
+        _metadata_from_record(record), record["filename"],
+        response={"ingest_id": ingest_id, "deleted": True, "chunks_deleted": chunks_deleted},
+    )
+    return {"ingest_id": ingest_id, "deleted": True, "chunks_deleted": chunks_deleted}
+
+
 # Statuses that can be re-dispatched. "extracting"/"embedding" are in-flight in
 # async mode (don't double-run); "done" is already indexed (re-upload to refresh).
 _REQUEUEABLE = {"queued", "failed"}
@@ -217,12 +266,15 @@ def _dispatch_ingest(repo, *, tenant_id: str, ingest_id: str) -> None:
     try:
         ingest_document_task.apply(args=(tenant_id, ingest_id), throw=False)
     except Exception as exc:  # noqa: BLE001 - inline execution itself failed
+        logger.warning(
+            "ingest_dispatch_failed for ingest %s: %s", ingest_id, exc,
+        )
         try:
             repo.update_status(
                 tenant_id=tenant_id,
                 ingest_id=ingest_id,
                 status="failed",
-                failure_reason=f"dispatch: {exc}",
+                failure_reason=safe_failure_reason("dispatch", exc),
             )
         except Exception:  # noqa: BLE001 - never mask the original failure
             pass
@@ -255,6 +307,31 @@ def _repository():
 
 def _object_store():
     return get_object_store()
+
+
+async def _delete_vector_chunks(tenant_id: str, document_id: str) -> int:
+    """Delete a document's chunks from the pgvector store.
+
+    Opens a short-lived asyncpg pool (mirrors the ingest worker's wiring) and
+    closes it afterwards. Tests monkeypatch this hook to avoid needing Postgres.
+    When persistence is local-json (demo/dev), there is no vector DB to clean,
+    so this is a no-op.
+    """
+    settings = get_settings()
+    if settings.persistence_backend != "postgres":
+        return 0
+
+    import asyncpg
+
+    from app.rag.vectorstore import VectorStore
+
+    url = settings.database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    pool = await asyncpg.create_pool(dsn=url, min_size=1, max_size=2)
+    try:
+        store = VectorStore(pool)
+        return await store.delete_document(tenant_id=tenant_id, document_id=document_id)
+    finally:
+        await pool.close()
 
 
 def _parse_metadata(raw: str) -> AdminDocumentMetadata:
