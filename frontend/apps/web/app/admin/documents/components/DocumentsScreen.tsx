@@ -11,6 +11,7 @@ import { BackLink, Badge, Button } from '@petrobrain/ui';
 import { fetchAssets } from '@/lib/chat/assets';
 import { useChatStore } from '@/lib/chat/store';
 import {
+  deleteAdminDocument,
   getAdminDocument,
   listAdminDocuments,
   requeueAdminDocument,
@@ -48,6 +49,7 @@ export function DocumentsScreen() {
 
   const [pending, setPending] = useState<PendingUpload[]>([]);
   const [requeuingId, setRequeuingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [filters, setFilters] = useState<DocumentFilterState>({
     status: 'all',
     type: 'all',
@@ -130,6 +132,39 @@ export function DocumentsScreen() {
     mutationFn: () => requeueStuckAdminDocuments({ baseUrl: apiBaseUrl, token }),
     onSettled: () => void queryClient.invalidateQueries({ queryKey: DOCUMENTS_QUERY_KEY }),
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (ingestId: string) =>
+      deleteAdminDocument({ baseUrl: apiBaseUrl, token, ingestId }),
+    // Optimistic: drop the row immediately, restore it if the request fails.
+    onMutate: async (ingestId) => {
+      setDeletingId(ingestId);
+      await queryClient.cancelQueries({ queryKey: DOCUMENTS_QUERY_KEY });
+      const previous = queryClient.getQueryData<AdminDocumentRow[]>(DOCUMENTS_QUERY_KEY) ?? [];
+      queryClient.setQueryData<AdminDocumentRow[]>(DOCUMENTS_QUERY_KEY, (old) =>
+        (old ?? []).filter((r) => r.ingest_id !== ingestId),
+      );
+      return { previous };
+    },
+    onError: (_err, _ingestId, ctx) => {
+      if (ctx?.previous) {
+        queryClient.setQueryData<AdminDocumentRow[]>(DOCUMENTS_QUERY_KEY, ctx.previous);
+      }
+    },
+    onSettled: () => {
+      setDeletingId(null);
+      void queryClient.invalidateQueries({ queryKey: DOCUMENTS_QUERY_KEY });
+    },
+  });
+
+  const handleDelete = (ingestId: string) => {
+    const row = (documentsQuery.data ?? []).find((r) => r.ingest_id === ingestId);
+    const label = row ? `"${row.title}"` : 'this document';
+    if (typeof window !== 'undefined' && !window.confirm(`Delete ${label}? This removes the file and its indexed chunks and cannot be undone.`)) {
+      return;
+    }
+    deleteMutation.mutate(ingestId);
+  };
 
   const filteredRows = useMemo(
     () => filterRows(documentsQuery.data ?? [], filters),
@@ -225,6 +260,8 @@ export function DocumentsScreen() {
           emptyState={'No documents match the current filters. Drop a file above to seed the index.'}
           onRequeue={(ingestId) => requeueMutation.mutate(ingestId)}
           requeuingId={requeuingId}
+          onDelete={handleDelete}
+          deletingId={deletingId}
         />
       </section>
     </main>

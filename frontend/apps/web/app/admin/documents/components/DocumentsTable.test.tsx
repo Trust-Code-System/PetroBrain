@@ -134,6 +134,50 @@ describe('DocumentsTable', () => {
     );
     expect(screen.queryByRole('button', { name: 'Requeue' })).toBeNull();
   });
+
+  it('shows Delete on every persisted row and fires onDelete with the ingest id', () => {
+    const onDelete = vi.fn();
+    render(
+      <DocumentsTable
+        rows={[
+          makeRow({ ingest_id: 'ing-done', status: 'done' }),
+          makeRow({ ingest_id: 'ing-failed', status: 'failed' }),
+        ]}
+        isLoading={false}
+        isError={false}
+        onDelete={onDelete}
+      />,
+    );
+
+    const doneRow = screen.getByTestId('row-ing-done');
+    expect(within(doneRow).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+
+    fireEvent.click(within(doneRow).getByRole('button', { name: 'Delete' }));
+    expect(onDelete).toHaveBeenCalledWith('ing-done');
+  });
+
+  it('does not offer Delete for an optimistic (not-yet-persisted) row', () => {
+    render(
+      <DocumentsTable
+        rows={[makeRow({ ingest_id: 'optimistic-pending-1', status: 'queued' })]}
+        isLoading={false}
+        isError={false}
+        onDelete={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+  });
+
+  it('does not render the Delete action when no onDelete handler is given', () => {
+    render(
+      <DocumentsTable
+        rows={[makeRow({ ingest_id: 'ing-d', status: 'done' })]}
+        isLoading={false}
+        isError={false}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+  });
 });
 
 describe('filterRows', () => {

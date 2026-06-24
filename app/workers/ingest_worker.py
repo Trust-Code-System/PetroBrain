@@ -16,6 +16,8 @@ import asyncio
 import threading
 from typing import Any
 
+import structlog
+
 from app.config import get_settings
 from app.db.admin_document_repository import (
     LocalJsonAdminDocumentRepository,
@@ -28,6 +30,9 @@ from app.rag.vectorstore import VectorStore
 from app.storage.object_store import get_object_store
 from app.workers.celery_app import celery_app
 from app.workers.extractors import extract_text
+from app.workers.ingest_failures import safe_failure_reason
+
+logger = structlog.get_logger(__name__)
 
 
 @celery_app.task(name="petrobrain.ingest_document", bind=True, max_retries=0)
@@ -72,12 +77,19 @@ async def _run(*, tenant_id: str, ingest_id: str) -> dict[str, Any]:
         text = extract_text(raw, record["filename"])
         if not text.strip():
             raise ValueError("extracted document text is empty")
-    except Exception as exc:  # noqa: BLE001 - surface the reason on the record
+    except Exception as exc:  # noqa: BLE001 - surface a SAFE reason on the record
+        # Full detail to the server log only; the persisted/displayed reason is
+        # sanitized so raw parser/temp-path errors never reach the admin UI.
+        logger.warning(
+            "ingest_extract_failed",
+            tenant_id=tenant_id, ingest_id=ingest_id, error=str(exc),
+            error_type=type(exc).__name__,
+        )
         repo.update_status(
             tenant_id=tenant_id,
             ingest_id=ingest_id,
             status="failed",
-            failure_reason=f"extract: {exc}",
+            failure_reason=safe_failure_reason("extract", exc),
         )
         return {"status": "failed", "ingest_id": ingest_id, "reason": str(exc)}
 
@@ -98,11 +110,19 @@ async def _run(*, tenant_id: str, ingest_id: str) -> dict[str, Any]:
             store, embedder, text=text, metadata=metadata
         )
     except Exception as exc:  # noqa: BLE001
+        # An OpenAI 429 body ("You exceeded your current quota ...") or any other
+        # provider error must NOT be persisted/shown verbatim - it leaks billing
+        # state and our provider choice. Log it for ops; store a safe reason.
+        logger.warning(
+            "ingest_embed_failed",
+            tenant_id=tenant_id, ingest_id=ingest_id, error=str(exc),
+            error_type=type(exc).__name__,
+        )
         repo.update_status(
             tenant_id=tenant_id,
             ingest_id=ingest_id,
             status="failed",
-            failure_reason=f"embed: {exc}",
+            failure_reason=safe_failure_reason("embed", exc),
         )
         return {"status": "failed", "ingest_id": ingest_id, "reason": str(exc)}
 
