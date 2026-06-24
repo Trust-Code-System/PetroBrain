@@ -38,6 +38,12 @@ class UserRecord:
     updated_utc: str = ""
     password_hash: str | None = None
     password_set_utc: str | None = None
+    # Two-factor (TOTP). secret is base32; recovery codes are bcrypt hashes,
+    # never plaintext. enabled flips true only once a code is proven.
+    totp_secret: str | None = None
+    totp_enabled: bool = False
+    totp_recovery_codes: list[str] = field(default_factory=list)
+    totp_enrolled_utc: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -192,6 +198,36 @@ class LocalJsonUsersRepository:
                            allowed_assets: list[str]) -> dict[str, Any]:
         return self._update(tenant_id, user_id, allowed_assets=list(allowed_assets))
 
+    def set_totp_pending(self, *, tenant_id: str, user_id: str,
+                         secret: str) -> dict[str, Any]:
+        """Store a not-yet-confirmed TOTP secret (enrollment in progress)."""
+        return self._update(tenant_id, user_id, totp_secret=secret, totp_enabled=False)
+
+    def enable_totp(self, *, tenant_id: str, user_id: str,
+                    recovery_code_hashes: list[str]) -> dict[str, Any]:
+        """Confirm enrollment: flip enabled on and store hashed recovery codes."""
+        return self._update(
+            tenant_id, user_id,
+            totp_enabled=True,
+            totp_recovery_codes=list(recovery_code_hashes),
+            totp_enrolled_utc=_now(),
+        )
+
+    def replace_recovery_codes(self, *, tenant_id: str, user_id: str,
+                               recovery_code_hashes: list[str]) -> dict[str, Any]:
+        return self._update(
+            tenant_id, user_id, totp_recovery_codes=list(recovery_code_hashes)
+        )
+
+    def disable_totp(self, *, tenant_id: str, user_id: str) -> dict[str, Any]:
+        return self._update(
+            tenant_id, user_id,
+            totp_secret=None,
+            totp_enabled=False,
+            totp_recovery_codes=[],
+            totp_enrolled_utc=None,
+        )
+
     def _update(self, tenant_id: str, user_id: str, **changes: Any) -> dict[str, Any]:
         with self._lock:
             rows = self._read_all_locked()
@@ -232,7 +268,8 @@ class LocalJsonUsersRepository:
 _USER_COLUMNS = (
     "id, tenant_id, email, role, status, allowed_assets, "
     "invited_at_utc, last_active_utc, created_utc, updated_utc, "
-    "password_hash, password_set_utc"
+    "password_hash, password_set_utc, "
+    "totp_secret, totp_enabled, totp_recovery_codes, totp_enrolled_utc"
 )
 
 
@@ -396,6 +433,34 @@ class PostgresUsersRepository:
                            allowed_assets: list[str]) -> dict[str, Any]:
         return self._update(tenant_id, user_id, allowed_assets=list(allowed_assets))
 
+    def set_totp_pending(self, *, tenant_id: str, user_id: str,
+                         secret: str) -> dict[str, Any]:
+        return self._update(tenant_id, user_id, totp_secret=secret, totp_enabled=False)
+
+    def enable_totp(self, *, tenant_id: str, user_id: str,
+                    recovery_code_hashes: list[str]) -> dict[str, Any]:
+        return self._update(
+            tenant_id, user_id,
+            totp_enabled=True,
+            totp_recovery_codes=list(recovery_code_hashes),
+            totp_enrolled_utc=_now(),
+        )
+
+    def replace_recovery_codes(self, *, tenant_id: str, user_id: str,
+                               recovery_code_hashes: list[str]) -> dict[str, Any]:
+        return self._update(
+            tenant_id, user_id, totp_recovery_codes=list(recovery_code_hashes)
+        )
+
+    def disable_totp(self, *, tenant_id: str, user_id: str) -> dict[str, Any]:
+        return self._update(
+            tenant_id, user_id,
+            totp_secret=None,
+            totp_enabled=False,
+            totp_recovery_codes=[],
+            totp_enrolled_utc=None,
+        )
+
     def _update(self, tenant_id: str, user_id: str, **changes: Any) -> dict[str, Any]:
         from psycopg.types.json import Json
 
@@ -403,7 +468,9 @@ class PostgresUsersRepository:
         params: list[Any] = []
         for key, value in changes.items():
             assignments.append(f"{key} = %s")
-            params.append(Json(value) if key == "allowed_assets" else value)
+            params.append(
+                Json(value) if key in ("allowed_assets", "totp_recovery_codes") else value
+            )
         assignments.append("updated_utc = now()")
         params.extend([tenant_id, user_id])
         sql = (
@@ -445,6 +512,7 @@ def _serialize_row(row: dict[str, Any]) -> dict[str, Any]:
         "created_utc",
         "updated_utc",
         "password_set_utc",
+        "totp_enrolled_utc",
     ):
         value = out.get(key)
         if value is not None and not isinstance(value, str):
@@ -464,6 +532,10 @@ def _record_from_row(row: dict[str, Any]) -> UserRecord:
         updated_utc=data.get("updated_utc", ""),
         password_hash=data.get("password_hash"),
         password_set_utc=data.get("password_set_utc"),
+        totp_secret=data.get("totp_secret"),
+        totp_enabled=bool(data.get("totp_enabled")),
+        totp_recovery_codes=list(data.get("totp_recovery_codes") or []),
+        totp_enrolled_utc=data.get("totp_enrolled_utc"),
     )
 
 

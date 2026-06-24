@@ -30,6 +30,7 @@ from app.core import auth_lockout
 from app.core.auth import hash_password, mint_jwt, verify_password
 from app.core import password_reset
 from app.core import refresh_tokens
+from app.core import totp
 from app.core.token_revocation import revoke as revoke_jti
 from app.db.tenants_repository import get_tenants_repository
 from app.db.users_repository import get_users_repository
@@ -97,6 +98,42 @@ class AuthResponse(BaseModel):
     refresh_token: str
     principal: AuthPrincipal
     onboarding_required: bool = False
+    # Only populated on the response that completes 2FA enrollment - the
+    # one-time recovery codes, shown to the user once and never again.
+    recovery_codes: list[str] | None = None
+
+
+class MfaChallengeResponse(BaseModel):
+    """Returned by /auth/signin when a second factor is required. No session
+    token is issued yet; the client exchanges ``mfa_token`` (plus a code, or an
+    enrollment) at /auth/2fa/verify for the real AuthResponse."""
+
+    mfa_required: bool = True
+    # False means the user must enrol first (call /auth/2fa/enroll), True means
+    # they already have an authenticator and should just enter a code.
+    enrolled: bool
+    mfa_token: str
+
+
+class MfaEnrollRequest(BaseModel):
+    mfa_token: str = Field(min_length=1)
+
+
+class MfaEnrollResponse(BaseModel):
+    secret: str
+    otpauth_uri: str
+    issuer: str
+    account: str
+
+
+class MfaVerifyRequest(BaseModel):
+    mfa_token: str = Field(min_length=1)
+    code: str = Field(min_length=1)
+
+
+class MfaStatusResponse(BaseModel):
+    enabled: bool
+    required: bool
 
 
 class RefreshRequest(BaseModel):
@@ -145,6 +182,10 @@ def _safe_delete_tenant(repo, tenant_id: str) -> None:
         repo.delete(tenant_id)
     except Exception:  # noqa: BLE001
         pass
+
+
+def _totp_issuer(settings) -> str:
+    return str(getattr(settings, "totp_issuer", "") or "PetroBrain")
 
 
 def _to_principal_payload(record: dict) -> AuthPrincipal:
@@ -228,8 +269,8 @@ def _validate_password(plain: str) -> None:
         raise HTTPException(status_code=422, detail="password is too long (max 72 bytes)")
 
 
-@router.post("/signup", response_model=AuthResponse, status_code=201)
-async def signup(req: SignupRequest) -> AuthResponse:
+@router.post("/signup", status_code=201)
+async def signup(req: SignupRequest) -> AuthResponse | MfaChallengeResponse:
     settings = get_settings()
     if not settings.enable_self_signup:
         raise HTTPException(status_code=403, detail="self-serve signup is disabled")
@@ -286,6 +327,30 @@ async def signup(req: SignupRequest) -> AuthResponse:
         _safe_delete_tenant(tenants, tenant_id)
         raise
 
+    # When 2FA is mandatory, a brand-new account does not get a session yet -
+    # it must enrol an authenticator first, same as signin. The user row exists
+    # (active) so the challenge can resolve it; the frontend handles the
+    # enrollment step identically for signup and signin.
+    if bool(getattr(settings, "require_2fa", False)):
+        from datetime import timedelta
+        challenge = totp.mint_challenge_token(
+            user_id=record["id"],
+            tenant_id=record["tenant_id"],
+            jwt_secret=settings.jwt_secret,
+            ttl=timedelta(minutes=int(getattr(settings, "mfa_challenge_ttl_minutes", 10))),
+        )
+        audit_logger.write(AuditEvent(
+            event_type="auth_signup",
+            tenant_id=record["tenant_id"],
+            user_id=record["id"],
+            role=record["role"],
+            route="/auth/signup",
+            request={"email": record["email"]},
+            response={"user_id": record["id"], "mfa_pending": True},
+            metadata={"flow": "self_serve", "account_type": account_type},
+        ))
+        return MfaChallengeResponse(enrolled=False, mfa_token=challenge)
+
     token = _mint_for(record)
     refresh_token = _issue_refresh(record)
     audit_logger.write(AuditEvent(
@@ -307,8 +372,8 @@ async def signup(req: SignupRequest) -> AuthResponse:
     )
 
 
-@router.post("/signin", response_model=AuthResponse)
-async def signin(req: SigninRequest) -> AuthResponse:
+@router.post("/signin")
+async def signin(req: SigninRequest) -> AuthResponse | MfaChallengeResponse:
     settings = get_settings()
     users = get_users_repository()
     record = users.find_by_email_any_tenant(req.email)
@@ -338,6 +403,31 @@ async def signin(req: SigninRequest) -> AuthResponse:
         raise invalid
     auth_lockout.record_success(tenant_id, req.email)
 
+    # Two-factor gate. The password is correct, but we do not issue a session
+    # yet if 2FA applies. A user who has already enrolled is ALWAYS challenged
+    # (even if the global flag is off - you can't un-enrol your way past it);
+    # when PB_REQUIRE_2FA is on, an unenrolled user is sent to enroll first.
+    enrolled = bool(record.get("totp_enabled"))
+    if enrolled or bool(getattr(settings, "require_2fa", False)):
+        from datetime import timedelta
+        challenge = totp.mint_challenge_token(
+            user_id=record["id"],
+            tenant_id=record["tenant_id"],
+            jwt_secret=settings.jwt_secret,
+            ttl=timedelta(minutes=int(getattr(settings, "mfa_challenge_ttl_minutes", 10))),
+        )
+        audit_logger.write(AuditEvent(
+            event_type="auth_signin_mfa_challenge",
+            tenant_id=record["tenant_id"],
+            user_id=record["id"],
+            role=record["role"],
+            route="/auth/signin",
+            request={"email": record["email"]},
+            response={"enrolled": enrolled},
+            metadata={},
+        ))
+        return MfaChallengeResponse(enrolled=enrolled, mfa_token=challenge)
+
     try:
         users.touch_last_active(tenant_id=tenant_id, user_id=record["id"])
     except Exception:
@@ -366,6 +456,146 @@ async def signin(req: SigninRequest) -> AuthResponse:
         refresh_token=refresh_token,
         principal=_to_principal_payload(record),
         onboarding_required=onboarding_required,
+    )
+
+
+def _load_active_user_from_challenge(req_token: str) -> dict:
+    """Resolve and validate the user behind an MFA challenge token, or 401."""
+    settings = get_settings()
+    expired = HTTPException(
+        status_code=401, detail="this sign-in step expired, please sign in again"
+    )
+    claims = totp.verify_challenge_token(req_token, jwt_secret=settings.jwt_secret)
+    if claims is None:
+        raise expired
+    record = get_users_repository().get(
+        tenant_id=str(claims["tenant_id"]), user_id=str(claims["user_id"])
+    )
+    if record is None or record.get("status") != "active":
+        raise expired
+    return record
+
+
+@router.post("/2fa/enroll", response_model=MfaEnrollResponse)
+async def enroll_2fa(req: MfaEnrollRequest) -> MfaEnrollResponse:
+    """Begin TOTP enrollment for the user behind a valid challenge token.
+
+    Generates a fresh secret (stored as pending, not yet enabled) and returns
+    the otpauth:// URI for the authenticator app. The user then proves a code
+    at /auth/2fa/verify, which is what actually enables 2FA.
+    """
+    settings = get_settings()
+    record = _load_active_user_from_challenge(req.mfa_token)
+    if record.get("totp_enabled"):
+        raise HTTPException(
+            status_code=409,
+            detail="two-factor is already set up; enter a code instead",
+        )
+    secret = totp.generate_secret()
+    get_users_repository().set_totp_pending(
+        tenant_id=record["tenant_id"], user_id=record["id"], secret=secret
+    )
+    return MfaEnrollResponse(
+        secret=secret,
+        otpauth_uri=totp.provisioning_uri(
+            secret, account_email=record["email"], issuer=_totp_issuer(settings)
+        ),
+        issuer=_totp_issuer(settings),
+        account=record["email"],
+    )
+
+
+@router.post("/2fa/verify", response_model=AuthResponse)
+async def verify_2fa(req: MfaVerifyRequest) -> AuthResponse:
+    """Complete sign-in (or enrollment) by proving a 6-digit code or a recovery
+    code, exchanging the challenge token for a real access + refresh pair.
+
+    Brute-force protection reuses the per-account lockout, keyed separately from
+    the password step so the two can't exhaust each other's budgets.
+    """
+    record = _load_active_user_from_challenge(req.mfa_token)
+    tenant_id = record["tenant_id"]
+    user_id = record["id"]
+    users = get_users_repository()
+
+    lock_key = f"{record['email']}:2fa"
+    if auth_lockout.is_locked(tenant_id, lock_key):
+        raise HTTPException(
+            status_code=429, detail="too many attempts, please wait and try again"
+        )
+    invalid = HTTPException(status_code=401, detail="invalid or expired code")
+
+    recovery_codes: list[str] | None = None
+    enrolling = not bool(record.get("totp_enabled"))
+    if enrolling:
+        secret = record.get("totp_secret")
+        if not secret:
+            # /auth/2fa/enroll has to run first to provision a secret.
+            raise HTTPException(status_code=400, detail="start two-factor setup first")
+        if not totp.verify_totp(secret, req.code):
+            auth_lockout.record_failure(tenant_id, lock_key)
+            raise invalid
+        recovery_codes = totp.generate_recovery_codes()
+        record = users.enable_totp(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            recovery_code_hashes=totp.hash_recovery_codes(recovery_codes),
+        )
+    else:
+        if totp.verify_totp(record.get("totp_secret"), req.code):
+            pass
+        else:
+            # Not a valid TOTP - try a one-time recovery code, which is consumed.
+            remaining = totp.consume_recovery_code(
+                req.code, list(record.get("totp_recovery_codes") or [])
+            )
+            if remaining is None:
+                auth_lockout.record_failure(tenant_id, lock_key)
+                raise invalid
+            record = users.replace_recovery_codes(
+                tenant_id=tenant_id, user_id=user_id, recovery_code_hashes=remaining
+            )
+    auth_lockout.record_success(tenant_id, lock_key)
+
+    try:
+        users.touch_last_active(tenant_id=tenant_id, user_id=user_id)
+    except Exception:
+        pass
+
+    token = _mint_for(record)
+    refresh_token = _issue_refresh(record)
+    audit_logger.write(AuditEvent(
+        event_type="auth_2fa_verified",
+        tenant_id=tenant_id,
+        user_id=user_id,
+        role=record["role"],
+        route="/auth/2fa/verify",
+        request={"email": record["email"]},
+        response={"enrolled_now": enrolling},
+        metadata={"method": "totp" if not enrolling else "enrollment"},
+    ))
+    tenant = get_tenants_repository().get(tenant_id) or {}
+    onboarding_required = (
+        (tenant.get("attributes") or {}).get("onboarding_status") != "completed"
+        and bool((tenant.get("attributes") or {}).get("created_by_signup"))
+    )
+    return AuthResponse(
+        token=token,
+        refresh_token=refresh_token,
+        principal=_to_principal_payload(record),
+        onboarding_required=onboarding_required,
+        recovery_codes=recovery_codes,
+    )
+
+
+@router.get("/2fa/status", response_model=MfaStatusResponse)
+async def mfa_status(who: Principal = Depends(get_principal)) -> MfaStatusResponse:
+    """Whether the signed-in user has 2FA enabled, and whether it's mandatory."""
+    settings = get_settings()
+    record = get_users_repository().get(tenant_id=who.tenant_id, user_id=who.user_id)
+    return MfaStatusResponse(
+        enabled=bool(record and record.get("totp_enabled")),
+        required=bool(getattr(settings, "require_2fa", False)),
     )
 
 

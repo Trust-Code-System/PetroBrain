@@ -10,7 +10,17 @@ import { Logo } from '@petrobrain/ui';
 import { useChatStore } from '@/lib/chat/store';
 import { useSettingsStore } from '@/lib/chat/settings';
 
-import { AuthError, signin, signup } from './api';
+import {
+  AuthError,
+  enroll2fa,
+  isMfaChallenge,
+  signin,
+  signup,
+  verify2fa,
+  type AuthResponse,
+  type MfaChallenge,
+  type MfaEnrollData,
+} from './api';
 
 export type AuthMode = 'signin' | 'signup';
 
@@ -91,6 +101,34 @@ export function AuthForm({ mode }: AuthFormProps) {
   // knows the sign-in request is still in progress.
   const [slow, setSlow] = useState(false);
   const slowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Set when the password step succeeds but a second factor is still required;
+  // swaps the credentials card for the 2FA step. recoveryCodes/pendingRoute are
+  // the one-time codes shown right after enrollment, before we route on.
+  const [challenge, setChallenge] = useState<MfaChallenge | null>(null);
+  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
+  const [pendingRoute, setPendingRoute] = useState<Route | null>(null);
+
+  function completeWithSession(res: AuthResponse) {
+    const cleanedEmail = email.trim();
+    setSession(res.token, res.refresh_token, {
+      ...res.principal,
+      email: res.principal.email || cleanedEmail,
+    });
+    clearSessionExpired();
+    if (mode === 'signup' && name.trim()) setCallMeName(name.trim());
+    if (mode === 'signup' && typeof window !== 'undefined') {
+      sessionStorage.removeItem('petrobrain-signup-account-type');
+    }
+    const target = (res.onboarding_required ? '/onboarding' : '/chat') as Route;
+    // Recovery codes only come back on the turn that completes enrollment; show
+    // them once (the user must save them) before routing into the app.
+    if (res.recovery_codes && res.recovery_codes.length > 0) {
+      setRecoveryCodes(res.recovery_codes);
+      setPendingRoute(target);
+    } else {
+      router.push(target);
+    }
+  }
 
   useEffect(() => {
     return () => {
@@ -147,16 +185,15 @@ export function AuthForm({ mode }: AuthFormProps) {
             ...(accountType ? { account_type: accountType } : {}),
           }, controller.signal)
         : await signin(apiBaseUrl, { email: cleanedEmail, password }, controller.signal);
-      setSession(res.token, res.refresh_token, { ...res.principal, email: res.principal.email || cleanedEmail });
-      clearSessionExpired();
-      // Capture the signup name in the same settings field the sidebar pill
-      // already prefers over the auto-generated user_id, so the user sees
-      // their name straight after creating the account.
-      if (mode === 'signup' && name.trim()) {
-        setCallMeName(name.trim());
+      if (isMfaChallenge(res)) {
+        // Password accepted, second factor still required. Swap to the 2FA step;
+        // the credentials are not kept past this point.
+        setChallenge(res);
+        setBusy(false);
+        setSlow(false);
+        return;
       }
-      if (mode === 'signup') sessionStorage.removeItem('petrobrain-signup-account-type');
-      router.push((res.onboarding_required ? '/onboarding' : '/chat') as Route);
+      completeWithSession(res);
     } catch (err) {
       if (err instanceof AuthError) {
         setError(err.message);
@@ -197,10 +234,23 @@ export function AuthForm({ mode }: AuthFormProps) {
             {copy.title}
           </h1>
           <p className="text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
-            {copy.subtitle}
+            {recoveryCodes ? 'Save your recovery codes' : challenge ? 'Two-factor authentication' : copy.subtitle}
           </p>
         </div>
 
+        {recoveryCodes ? (
+          <RecoveryCodesCard
+            codes={recoveryCodes}
+            onContinue={() => { if (pendingRoute) router.push(pendingRoute); }}
+          />
+        ) : challenge ? (
+          <TwoFactorStep
+            baseUrl={apiBaseUrl}
+            challenge={challenge}
+            onComplete={completeWithSession}
+          />
+        ) : (
+        <>
         <form
           onSubmit={submit}
           aria-label={copy.title}
@@ -348,7 +398,211 @@ export function AuthForm({ mode }: AuthFormProps) {
           By {mode === 'signup' ? 'creating an account' : 'signing in'} you confirm you are
           authorised to access this tenant&apos;s operations data.
         </p>
+        </>
+        )}
       </div>
     </main>
+  );
+}
+
+/**
+ * Second-factor step shown after the password is accepted. If the user is not
+ * yet enrolled it provisions a TOTP secret and shows the manual setup key plus
+ * an "open in authenticator" link (better than a QR on a mobile-only device,
+ * where you can't scan your own screen); enrolled users just enter a code.
+ */
+function TwoFactorStep({
+  baseUrl,
+  challenge,
+  onComplete,
+}: {
+  baseUrl: string;
+  challenge: MfaChallenge;
+  onComplete: (res: AuthResponse) => void;
+}) {
+  const [enrollData, setEnrollData] = useState<MfaEnrollData | null>(null);
+  const [loadingEnroll, setLoadingEnroll] = useState(!challenge.enrolled);
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (challenge.enrolled) return;
+    let active = true;
+    enroll2fa(baseUrl, challenge.mfa_token)
+      .then((data) => { if (active) setEnrollData(data); })
+      .catch((e) => {
+        if (active) {
+          setErr(e instanceof AuthError ? e.message : 'Could not start two-factor setup.');
+        }
+      })
+      .finally(() => { if (active) setLoadingEnroll(false); });
+    return () => { active = false; };
+  }, [baseUrl, challenge]);
+
+  async function submitCode(e: FormEvent) {
+    e.preventDefault();
+    if (busy) return;
+    const cleaned = code.trim();
+    if (!cleaned) { setErr('Enter the code from your authenticator app.'); return; }
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await verify2fa(baseUrl, { mfa_token: challenge.mfa_token, code: cleaned });
+      onComplete(res);
+    } catch (e) {
+      setErr(e instanceof AuthError ? e.message : 'Could not verify the code. Try again.');
+      setBusy(false);
+    }
+  }
+
+  async function copySecret() {
+    if (!enrollData) return;
+    try {
+      await navigator.clipboard.writeText(enrollData.secret);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Clipboard can be blocked; the key is visible to type manually anyway.
+    }
+  }
+
+  const inputCls =
+    'h-11 w-full rounded-xl border border-neutral-200 bg-white px-3.5 text-center text-lg tracking-[0.3em] shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:border-primary-300 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-200 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:placeholder-neutral-500';
+
+  return (
+    <form
+      onSubmit={submitCode}
+      aria-label="Two-factor authentication"
+      className="space-y-4 rounded-2xl border border-neutral-200/70 bg-white/80 p-6 shadow-brand-md backdrop-blur dark:border-neutral-800/70 dark:bg-neutral-900/70"
+    >
+      {!challenge.enrolled ? (
+        <div className="space-y-3">
+          <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">
+            Set up an authenticator app (Google Authenticator, Authy, 1Password). Add this
+            account, then enter the 6-digit code it shows.
+          </p>
+          {loadingEnroll ? (
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">Preparing setup…</p>
+          ) : enrollData ? (
+            <div className="space-y-2 rounded-xl border border-neutral-200 bg-neutral-50/70 p-3 dark:border-neutral-700 dark:bg-neutral-900/60">
+              <a
+                href={enrollData.otpauth_uri}
+                className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-primary-300 bg-primary-50 text-sm font-semibold text-primary-700 transition-colors hover:bg-primary-100 dark:border-primary-600 dark:bg-primary-900/30 dark:text-primary-200"
+              >
+                Open in authenticator app
+              </a>
+              <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                Or enter this key manually
+              </p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 break-all rounded-md bg-white px-2 py-1.5 font-mono text-xs text-neutral-800 dark:bg-neutral-950 dark:text-neutral-100">
+                  {enrollData.secret}
+                </code>
+                <button
+                  type="button"
+                  onClick={copySecret}
+                  className="shrink-0 rounded-md border border-neutral-200 px-2 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                >
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">
+          Enter the 6-digit code from your authenticator app. You can also use one of your
+          recovery codes.
+        </p>
+      )}
+
+      <div className="space-y-1.5">
+        <label htmlFor="mfa-code" className="text-xs font-medium uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
+          Authentication code
+        </label>
+        <input
+          id="mfa-code"
+          inputMode="text"
+          autoComplete="one-time-code"
+          autoFocus
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder="123456"
+          className={inputCls}
+        />
+      </div>
+
+      {err ? (
+        <p role="alert" className="rounded-xl border border-danger-border/70 bg-danger-bg/60 px-3 py-2 text-xs font-medium text-danger-fg dark:border-danger-border/40 dark:bg-danger-fg/20 dark:text-danger-bg">
+          {err}
+        </p>
+      ) : null}
+
+      <button
+        type="submit"
+        disabled={busy || loadingEnroll}
+        className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-primary-500 to-primary-700 text-sm font-semibold text-white shadow-brand-primary transition-all hover:from-primary-400 hover:to-primary-600 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {busy ? 'Verifying…' : challenge.enrolled ? 'Verify and sign in' : 'Verify and finish setup'}
+      </button>
+    </form>
+  );
+}
+
+/**
+ * One-time recovery codes shown immediately after enrollment. The user must
+ * save these; they are the only way back in if the authenticator is lost.
+ */
+function RecoveryCodesCard({
+  codes,
+  onContinue,
+}: {
+  codes: string[];
+  onContinue: () => void;
+}) {
+  const [ack, setAck] = useState(false);
+
+  function copyAll() {
+    void navigator.clipboard?.writeText(codes.join('\n')).catch(() => {});
+  }
+
+  return (
+    <div className="space-y-4 rounded-2xl border border-neutral-200/70 bg-white/80 p-6 shadow-brand-md backdrop-blur dark:border-neutral-800/70 dark:bg-neutral-900/70">
+      <p className="text-sm leading-relaxed text-neutral-600 dark:text-neutral-300">
+        Save these recovery codes somewhere safe. Each works once if you lose access to your
+        authenticator. They will not be shown again.
+      </p>
+      <ul className="grid grid-cols-2 gap-2 rounded-xl border border-neutral-200 bg-neutral-50/70 p-3 font-mono text-sm dark:border-neutral-700 dark:bg-neutral-900/60">
+        {codes.map((c) => (
+          <li key={c} className="text-neutral-800 dark:text-neutral-100">{c}</li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        onClick={copyAll}
+        className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-neutral-200 text-sm font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
+      >
+        Copy codes
+      </button>
+      <label className="flex items-start gap-2 text-xs text-neutral-600 dark:text-neutral-300">
+        <input
+          type="checkbox"
+          checked={ack}
+          onChange={(e) => setAck(e.target.checked)}
+          className="mt-0.5"
+        />
+        I have saved my recovery codes.
+      </label>
+      <button
+        type="button"
+        disabled={!ack}
+        onClick={onContinue}
+        className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-primary-500 to-primary-700 text-sm font-semibold text-white shadow-brand-primary transition-all hover:from-primary-400 hover:to-primary-600 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        Continue
+      </button>
+    </div>
   );
 }
