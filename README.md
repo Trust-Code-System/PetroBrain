@@ -1,195 +1,130 @@
-# PetroBrain - Phase-1 Repository (Tier A spine + two specialist modules)
+# PetroBrain
 
-[![CI](https://github.com/Lingz450/PetroBrain/actions/workflows/ci.yml/badge.svg)](https://github.com/Lingz450/PetroBrain/actions/workflows/ci.yml)
+Safety-focused oil and gas AI decision support with cited retrieval, deterministic engineering calculations, governed research, and auditable operational workflows.
 
-A working Phase-1 scaffold for a domain-locked oil & gas AI. This repo contains:
+> **Status:** Active development. PetroBrain is decision-support software, not an autonomous control system and not a substitute for qualified engineering review, approved procedures, or regulatory verification.
 
-1. **The shared spine** - FastAPI services, the orchestrator/agent runtime, the
-   LLM-provider abstraction (Tier A hosted / Tier B self-hosted), the safety guardrail
-   layer, and the RAG pipeline (clause-aware chunking → embeddings → pgvector hybrid
-   search → rerank).
-2. **The deterministic calculation engine** - unit-safe (`pint`) engineering calcs.
-   Numbers come from here, never from the LLM's head.
-3. **Specialist module A - Well Control / Kill Sheet** - fully built: KMW, ICP, FCP,
-   strokes, Wait-and-Weight pressure schedule, influx analysis, MAASP, live-event
-   routing, and the decision-support safety banner.
-4. **Specialist module B - NUPRC Tier-3 MRV** - emissions engine (flaring carbon
-   balance, venting, fugitive Tier 2 *and* Tier 3, combustion), CO2e with configurable
-   IPCC GWP, and a GHGEMP report generator with tier-readiness gaps and an audit hash.
-5. **The eval / safety harness** - golden engineering set + a red-team safety set that
-   must pass with **zero failures** before any deploy.
+[![CI](https://github.com/Trust-Code-System/PetroBrain/actions/workflows/ci.yml/badge.svg)](https://github.com/Trust-Code-System/PetroBrain/actions/workflows/ci.yml)
 
-All engineering math is validated by tests (`python tests/test_calculations.py` →
-16/16 pass; `python tests/eval_harness.py` → 0 failures).
+## What the system contains
 
----
+- A FastAPI service layer and provider-abstracted orchestration runtime.
+- Tenant-scoped retrieval with clause-aware ingestion, embeddings, pgvector search, reranking, and citation metadata.
+- Deterministic, unit-aware engineering calculations that remain separate from language-model generation.
+- Well-control and kill-sheet decision-support workflows.
+- Emissions and MRV workflows with audit-oriented outputs.
+- Governed research that requires explicit plan approval and records a source ledger.
+- Background document ingestion, object storage, structured logs, metrics, and operational health endpoints.
 
-## Why it's built this way (the load-bearing decisions)
+## Safety model
 
-- **Two tiers, one codebase.** `PB_LLM_PROVIDER=anthropic` runs Tier A (cloud knowledge
-  tier, hosted frontier model). `PB_LLM_PROVIDER=self_hosted` runs Tier B (on-prem behind
-  the OT DMZ, open-weights model, no outbound calls). Same orchestrator, same tools.
-- **The LLM never does arithmetic.** Every number is produced by the deterministic calc
-  engine / specialist modules and called as a *tool*. The orchestrator executes the tool
-  and feeds the result back. The post-guardrail flags any unverified number.
-- **Safety is structural, not just prompted.** Guardrails refuse safety-system-bypass
-  requests, route live events to immediate-action guidance first, and enforce the
-  verification banner on safety-critical output. The red-team eval gates deploys.
-- **Citations are first-class.** Chunks carry document/revision/clause metadata; the
-  retriever returns citation-grade hits; the post-guardrail rejects fabricated clause
-  references.
-- **Tenant isolation is mandatory.** Every retrieval is tenant-filtered (and should also
-  use Postgres RLS). The retriever can't query without a tenant id.
+PetroBrain is structured around four boundaries:
 
----
+1. **Models do not perform authoritative arithmetic.** Engineering values come from reviewed calculation modules and are returned to the orchestrator as tool output.
+2. **Sources remain visible.** Retrieval results preserve document, revision, clause, and tenant context for citation-grade responses.
+3. **Critical output is guarded.** Pre- and post-generation checks handle unsafe requests, unsupported references, and unverified numerical claims.
+4. **Humans retain responsibility.** Operational decisions, filings, procedures, and live-event actions require qualified review and current source material.
 
-## Layout
+## Architecture
 
-```
+```text
 app/
-  main.py                  FastAPI entrypoint (Tier-A spine)
-  config.py                env-driven settings (tier, providers, stores)
-  api/                     routes: /chat, /well-control/kill-sheet, /emissions/inventory
-  core/
-    prompts.py             base prompt + module preambles + runtime context assembly
-    llm_service.py         hosted (Anthropic) + self-hosted (vLLM/TGI) abstraction
-    guardrails.py          pre/post safety checks
-    orchestrator.py        the agent runtime (guardrail→retrieve→prompt→LLM→tools→guardrail)
-  rag/
-    chunking.py            clause-aware splitter
-    embeddings.py          embedding provider abstraction
-    vectorstore.py         pgvector hybrid search + reciprocal-rank fusion
-    retriever.py           embed→hybrid→rerank→citation-grade hits
-    ingest.py              classify→extract→chunk→embed→index
-  calc/
-    units.py               pint registry + named oilfield constants
-    drilling.py            hydrostatic, ECD, kill mud weight, MAASP
-    production.py          Vogel IPR, Arps decline
-  modules/
-    well_control/          SPECIALIST MODULE A (kill_sheet.py + agent.py)
-    emissions_mrv/         SPECIALIST MODULE B (engine.py + factors.py + ghgemp_template.py)
-  models/schemas.py        API schemas
-tests/
-  test_calculations.py     16 validated engineering tests
-  eval_harness.py          golden + red-team safety gate
+├── api/                   Versioned HTTP routes and dependencies
+├── core/                  Orchestration, providers, prompts, and guardrails
+├── rag/                   Ingestion, embeddings, retrieval, and vector storage
+├── calc/                  Deterministic engineering calculations
+├── modules/               Well-control and emissions specialist workflows
+├── workers/               Asynchronous document processing
+├── db/                    Persistence and migrations
+└── models/                API and domain schemas
+frontend/                  Web, field, admin, and shared frontend packages
+infra/                     Deployment, security, and infrastructure guidance
+tests/                     Unit, integration, safety, and evaluation coverage
 ```
 
----
+## Stack
 
-## Run it
+| Layer | Technology |
+| --- | --- |
+| API | Python, FastAPI, Pydantic, Uvicorn |
+| Data | PostgreSQL, asyncpg, psycopg, pgvector, Redis |
+| AI | Anthropic/OpenAI provider abstraction, embeddings, RAG |
+| Documents | Celery, S3-compatible storage, pdfplumber, python-docx |
+| Security | JWT, bcrypt, TOTP, tenant context, guarded outputs |
+| Observability | structlog, OpenTelemetry, Prometheus |
+| Delivery | Docker Compose, Render configuration, GitHub Actions |
+
+## Local setup
+
+### Prerequisites
+
+- Python 3.11 or newer
+- Docker with Compose
+- PostgreSQL with pgvector, Redis, and S3-compatible storage
+
+### Start infrastructure and API
 
 ```bash
-# 1. infra (Postgres+pgvector, Redis, MinIO)
 docker compose up -d db redis minio
-
-# 2. python env
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-
-# 3. validate the engineering math and the safety gate (no infra needed)
-python tests/test_calculations.py
-python tests/eval_harness.py
-
-# 4. configure + run the API
-cp .env.example .env     # add ANTHROPIC_API_KEY / OPENAI_API_KEY
-uvicorn app.main:app --reload
-# POST /chat, /well-control/kill-sheet, /emissions/inventory, /research/plan
-
-# 5. async document ingestion (A5) - run the Celery worker
-celery -A app.workers.celery_app worker --loglevel=info -Q petrobrain.ingest
-# then POST a SOP as multipart:
-#   curl -X POST http://localhost:8000/admin/documents \
-#        -H "Authorization: Bearer <admin token>" \
-#        -F "file=@sop.pdf" \
-#        -F 'metadata={"document_id":"SOP-1","title":"Kick SOP","asset":"Asset-A"}'
-# poll GET /admin/documents/{ingest_id} for status: queued|extracting|embedding|done|failed
+python -m venv .venv
 ```
 
-For local development, mint a JWT with the same `PB_JWT_SECRET`, issuer, and audience
-as `.env` and paste it as `Authorization: Bearer <token>`:
+Activate the virtual environment for your shell, then:
 
 ```bash
-python - <<'PY'
-from datetime import datetime, timedelta, timezone
-import jwt
-
-now = datetime.now(timezone.utc)
-print(jwt.encode({
-    "sub": "u1",
-    "user_id": "u1",
-    "tenant_id": "demo",
-    "role": "engineer",
-    "allowed_assets": ["*"],
-    "iss": "petrobrain",
-    "aud": "petrobrain-api",
-    "iat": now,
-    "exp": now + timedelta(hours=8),
-}, "dev-secret-change-me-32-bytes-minimum", algorithm="HS256"))
-PY
+pip install -r requirements.txt
+cp .env.example .env
+uvicorn app.main:app --reload
 ```
 
-Initialize the vector schema once from `app/rag/vectorstore.py::SCHEMA`.
+Use [`.env.example`](./.env.example) as the variable-name reference. Real provider credentials, JWT secrets, database URLs, storage keys, and tenant data must never be committed.
 
----
+## Validation
 
-## Governed Research Mode
+Run the checks relevant to your change. The repository CI is the source of truth for the complete gate.
 
-Research Mode is a tenant-scoped, read-only analyst workflow for oil and gas
-questions. It requires explicit plan approval before execution, searches only
-enabled tenant documents and approved public domains, streams progress with
-server-sent events, and persists the source ledger, report, evidence pack, and
-audit metadata.
+```bash
+pytest
+python tests/eval_harness.py
+ruff check .
+mypy app
+```
 
-The lifecycle is:
+For calculation changes, add or update deterministic fixtures and record the governing formula/source. For retrieval changes, verify tenant isolation, citation integrity, refusal behavior, and evaluation results.
 
-1. `POST /research/plan`
-2. `POST /research/{id}/approve-plan`
-3. `POST /research/run?stream=true`
-4. `GET /research/{id}` or `GET /research/{id}/events`
-5. `POST /research/{id}/export`
+## Governed research lifecycle
 
-Set `PB_TAVILY_API_KEY` to enable public web research. Without it, runs continue
-against tenant documents and record `web_search_disabled`. External connectors
-are intentionally rejected even if requested; `PB_RESEARCH_CONNECTORS_ENABLED`
-is reserved for a future governed connector registry and does not bypass that
-boundary.
+```text
+create plan → review plan → approve → execute → inspect sources → export
+```
 
-Local JSON persistence uses `PB_RESEARCH_STORE_PATH`. With
-`PB_PERSISTENCE_BACKEND=postgres`, apply migration
-`app/db/migrations/015_research_runs.sql`; tenant row-level security is enforced
-through the same connection context as the other repositories.
+Research is tenant-scoped and read-only. Without a configured public-search provider, runs continue against approved tenant material and explicitly record that web search was unavailable.
 
-The analyst workspace is available at `/research` in the web app. Roles are
-limited to `platform_admin`, `admin`, `engineer`, and `hse`.
+## Deployment
 
----
+Deployment requires more than a successful container build:
 
-## The three deep-dives, mapped to files
+- rotate and store secrets in the deployment platform;
+- apply database migrations and tenant-level policies;
+- configure immutable or off-host audit retention;
+- configure alerts for provider, ingestion, audit, and storage failures;
+- validate backup and restore procedures;
+- run safety and retrieval evaluations against the release candidate;
+- confirm current engineering and regulatory source material.
 
-**(a) Phase-1 spine + RAG + calc engine** → `app/` (core, rag, calc) + `app/main.py`.
+See [`infra/README.md`](./infra/README.md), [`infra/SECURITY.md`](./infra/SECURITY.md), and [`docs/`](./docs/) for implementation-specific guidance.
 
-**(b) Well-control kill-sheet specialist** → `app/modules/well_control/`. `kill_sheet.py`
-is the full worked engine (validated: KMW 10.37 ppg, ICP 1200 psi, FCP 864 psi, MAASP
-1144 psi, gas influx inferred). `agent.py` shows the module pattern (base prompt + module
-preamble + tool schema) and the live-event routing.
+## Security and data handling
 
-**(c) NUPRC Tier-3 MRV product** → `app/modules/emissions_mrv/`. `engine.py` computes the
-inventory; the *same* engine serves Tier 2 (factor-based) and Tier 3 (measurement-based) -
-the difference is recorded per line, which is exactly the Q3-2026→Jan-2027 transition.
-`ghgemp_template.py` emits the audit-ready report with tier-readiness gaps.
+- Do not ingest confidential operational material into an unapproved environment.
+- Keep service and provider credentials server-side and rotate any exposed value immediately.
+- Enforce tenant filtering at application and database layers.
+- Avoid logging prompts, documents, secrets, or personally identifiable information by default.
+- Treat model output as untrusted until source, calculation, and policy checks pass.
+- Review dependency, container, and workflow findings before each production release.
 
----
+## Contribution context and licence
 
-## What this scaffold deliberately leaves as plug-points (Phase 2+)
+PetroBrain is maintained collaboratively under TrustCode System Limited. Use commit and pull-request history when describing individual contributions.
 
-- P&ID / scanned-document OCR extractors (slot into `rag/ingest.py::extract`).
-- Cross-encoder reranker (slot into `rag/retriever.py`).
-- Trained classifiers replacing the regex guardrail baselines.
-- Tier-B historian/SCADA read-only connectors behind the DMZ.
-- The knowledge-graph asset hierarchy service.
-- Auth: real JWT/SSO + Postgres row-level security in `api/deps.py`.
-
-> Compliance note: GWP values and emission factors in `emissions_mrv/factors.py` are
-> reference values. Before any NUPRC filing, set them to the current gazetted NUPRC
-> guidance and the operator's applicable IPCC tier, and record the source in the audit
-> trail. PetroBrain is decision support - submissions remain the operator's responsibility.
+No open-source licence is currently granted. Public visibility does not by itself permit reuse, modification, or redistribution.
