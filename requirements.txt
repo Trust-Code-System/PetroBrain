@@ -16,7 +16,10 @@ PyJWT==2.13.0
 cryptography==48.0.1
 bcrypt==4.2.0
 pyotp==2.9.0
-sentence-transformers==5.5.1
+# The hosted Tier-A deployment keeps PB_RERANK_ENABLED=false and uses the
+# embedding score directly.  sentence-transformers pulls in PyTorch and makes
+# serverless bundles exceed Vercel's 500 MB Python-function limit.  Tier-B
+# installs it from requirements-tierb.txt, where local reranking is enabled.
 celery==5.5.3
 boto3==1.40.59
 pdfplumber==0.11.7
