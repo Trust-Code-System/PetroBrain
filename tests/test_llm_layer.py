@@ -85,6 +85,15 @@ def test_llm_service_requires_anthropic_key(monkeypatch):
         service._validate_provider_config("anthropic")
 
 
+def test_llm_service_requires_openai_key(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    service = LLMService()
+    service.settings = SimpleNamespace(llm_provider="openai", llm_api_base="")
+
+    with pytest.raises(LLMConfigurationError, match="OPENAI_API_KEY is required"):
+        service._validate_provider_config("openai")
+
+
 def test_llm_service_requires_self_hosted_base_url():
     service = LLMService()
     service.settings = SimpleNamespace(llm_provider="self_hosted", llm_api_base="")

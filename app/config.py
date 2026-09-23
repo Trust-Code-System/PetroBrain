@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     )
 
     # LLM
-    llm_provider: str = "anthropic"          # anthropic | self_hosted
+    llm_provider: str = "anthropic"          # anthropic | openai | self_hosted
     llm_model: str = "claude-sonnet-4-6"
     llm_api_base: str = ""                    # set for self-hosted (vLLM/TGI) endpoint
     llm_max_tokens: int = 2048

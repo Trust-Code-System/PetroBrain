@@ -50,6 +50,8 @@ class LLMService:
         self._validate_provider_config(provider)
         if provider == "anthropic":
             return await self._anthropic(system_prompt, messages, tools, thinking_mode)
+        elif provider == "openai":
+            return await self._openai(system_prompt, messages, tools)
         elif provider == "self_hosted":
             return await self._self_hosted(system_prompt, messages, tools)
         raise ValueError(f"unknown llm_provider {provider}")
@@ -73,6 +75,10 @@ class LLMService:
             async for event in self._anthropic_stream(system_prompt, messages, tools, thinking_mode):
                 yield event
             return
+        if provider == "openai":
+            async for event in self._openai_stream(system_prompt, messages, tools):
+                yield event
+            return
         if provider == "self_hosted":
             async for event in self._self_hosted_stream(system_prompt, messages, tools):
                 yield event
@@ -83,6 +89,10 @@ class LLMService:
         if provider == "anthropic" and not os.getenv("ANTHROPIC_API_KEY"):
             raise LLMConfigurationError(
                 "ANTHROPIC_API_KEY is required when PB_LLM_PROVIDER=anthropic"
+            )
+        if provider == "openai" and not os.getenv("OPENAI_API_KEY"):
+            raise LLMConfigurationError(
+                "OPENAI_API_KEY is required when PB_LLM_PROVIDER=openai"
             )
         if provider == "self_hosted" and not self.settings.llm_api_base:
             raise LLMConfigurationError(
@@ -132,6 +142,95 @@ class LLMService:
             "tool_calls": tool_calls,
             "usage": {"input": final.usage.input_tokens, "output": final.usage.output_tokens},
             "model": final.model,
+        }
+
+    async def _openai(self, system_prompt, messages, tools) -> LLMResponse:
+        """Hosted OpenAI chat completions for Tier A deployments."""
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI()
+        kwargs: dict[str, Any] = {
+            "model": self.settings.llm_model,
+            "messages": [{"role": "system", "content": system_prompt}, *messages],
+            "max_completion_tokens": self.settings.llm_max_tokens,
+        }
+        if tools:
+            kwargs["tools"] = [{"type": "function", "function": t} for t in tools]
+        resp = await client.chat.completions.create(**kwargs)
+        choice = resp.choices[0].message
+        tool_calls = [
+            {
+                "name": tc.function.name,
+                "input": _parse_tool_arguments(tc.function.arguments),
+                "id": tc.id,
+            }
+            for tc in (choice.tool_calls or [])
+        ]
+        usage = resp.usage
+        return LLMResponse(
+            text=choice.content or "",
+            tool_calls=tool_calls,
+            usage={
+                "input": getattr(usage, "prompt_tokens", 0) if usage else 0,
+                "output": getattr(usage, "completion_tokens", 0) if usage else 0,
+            },
+            model=resp.model,
+        )
+
+    async def _openai_stream(self, system_prompt, messages, tools) -> AsyncIterator[dict[str, Any]]:
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI()
+        kwargs: dict[str, Any] = {
+            "model": self.settings.llm_model,
+            "messages": [{"role": "system", "content": system_prompt}, *messages],
+            "max_completion_tokens": self.settings.llm_max_tokens,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        if tools:
+            kwargs["tools"] = [{"type": "function", "function": t} for t in tools]
+
+        chunks: list[str] = []
+        tool_parts: dict[int, dict[str, str]] = {}
+        usage = {"input": 0, "output": 0}
+        stream = await client.chat.completions.create(**kwargs)
+        async for event in stream:
+            if event.usage:
+                usage = {
+                    "input": getattr(event.usage, "prompt_tokens", 0),
+                    "output": getattr(event.usage, "completion_tokens", 0),
+                }
+            if not event.choices:
+                continue
+            delta = event.choices[0].delta
+            if delta.content:
+                chunks.append(delta.content)
+                yield {"type": "token", "text": delta.content}
+            for tc in delta.tool_calls or []:
+                part = tool_parts.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
+                if tc.id:
+                    part["id"] = tc.id
+                if tc.function:
+                    if tc.function.name:
+                        part["name"] += tc.function.name
+                    if tc.function.arguments:
+                        part["arguments"] += tc.function.arguments
+
+        tool_calls = [
+            {
+                "name": part["name"],
+                "input": _parse_tool_arguments(part["arguments"]),
+                "id": part["id"] or None,
+            }
+            for _, part in sorted(tool_parts.items())
+        ]
+        yield {
+            "type": "done",
+            "text": "".join(chunks),
+            "tool_calls": tool_calls,
+            "usage": usage,
+            "model": self.settings.llm_model,
         }
 
     async def _self_hosted(self, system_prompt, messages, tools) -> LLMResponse:
