@@ -5,6 +5,11 @@ import { EvidencePanel } from './EvidencePanel';
 
 
 describe('EvidencePanel', () => {
+  it('ignores an incomplete evidence pack instead of crashing the app', () => {
+    expect(() => render(<EvidencePanel evidence={{} as never} />)).not.toThrow();
+    expect(screen.queryByText('Verification')).not.toBeInTheDocument();
+  });
+
   it('shows confidence, decision-support advisory, and source quality', () => {
     render(
       <EvidencePanel

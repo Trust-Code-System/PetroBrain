@@ -4,19 +4,32 @@ import type { EvidencePack } from '@petrobrain/types';
 
 export function EvidencePanel({ evidence }: { evidence: EvidencePack | null }) {
   if (!evidence) return null;
+  const checked = Array.isArray(evidence.checked) ? evidence.checked : [];
+  const notVerified = Array.isArray(evidence.not_verified) ? evidence.not_verified : [];
+  const sources = Array.isArray(evidence.sources) ? evidence.sources : [];
+  const calculations = Array.isArray(evidence.calculations)
+    ? evidence.calculations.map((calculation) => ({
+        ...calculation,
+        outputs: Array.isArray(calculation?.outputs) ? calculation.outputs : [],
+        formulas: Array.isArray(calculation?.formulas) ? calculation.formulas : [],
+      }))
+    : [];
   const hasDetails =
-    evidence.checked.length > 0 ||
-    evidence.not_verified.length > 0 ||
-    evidence.sources.length > 0 ||
-    evidence.calculations.length > 0;
+    checked.length > 0 ||
+    notVerified.length > 0 ||
+    sources.length > 0 ||
+    calculations.length > 0;
   if (!hasDetails) return null;
+
+  const confidence = evidence.confidence ?? { label: 'Unknown', reason: '' };
+  const safety = evidence.safety ?? { requires_human_verification: false, message: '' };
 
   return (
     <details className="rounded-xl border border-neutral-200/80 bg-white/70 px-3 py-2 text-xs dark:border-neutral-800 dark:bg-neutral-900/60">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
         <span className="font-semibold text-neutral-800 dark:text-neutral-100">Verification</span>
         <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
-          {evidence.confidence.label}
+          {confidence.label}
         </span>
       </summary>
 
@@ -26,20 +39,20 @@ export function EvidencePanel({ evidence }: { evidence: EvidencePack | null }) {
             {evidence.advisory.message}
           </p>
         ) : null}
-        {evidence.safety.requires_human_verification ? (
+        {safety.requires_human_verification ? (
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100">
-            {evidence.safety.message}
+            {safety.message}
           </p>
         ) : null}
 
-        <Section title="What I checked" rows={evidence.checked} />
-        <Sources sources={evidence.sources} />
-        <Calculations calculations={evidence.calculations} />
-        <Section title="Not verified" rows={evidence.not_verified} muted />
+        <Section title="What I checked" rows={checked} />
+        <Sources sources={sources} />
+        <Calculations calculations={calculations} />
+        <Section title="Not verified" rows={notVerified} muted />
 
-        {evidence.confidence.reason ? (
+        {confidence.reason ? (
           <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-            Confidence: {evidence.confidence.reason}
+            Confidence: {confidence.reason}
           </p>
         ) : null}
       </div>
