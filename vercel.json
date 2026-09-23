@@ -5,5 +5,11 @@
       "maxDuration": 300,
       "excludeFiles": "{tests/**,frontend/**,infra/**,docs/**,scripts/**,data/**,logs/**,docker-compose*.yml,render.yaml,requirements-tierb.txt}"
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/index"
+    }
+  ]
 }
