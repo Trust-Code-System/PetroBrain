@@ -1,0 +1,16 @@
+.git
+.github
+.pytest_cache
+.mypy_cache
+.ruff_cache
+frontend
+tests
+docs
+infra
+scripts
+data
+logs
+docker-compose*.yml
+render.yaml
+requirements-tierb.txt
+TODO.md
